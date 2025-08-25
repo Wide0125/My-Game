@@ -1,0 +1,8 @@
+{
+    "files.insertFinalNewline": true,
+    "cmake.ignoreCMakeListsMissing": true,
+    "cSpell.words": [
+        "douchebag"
+    ],
+    "gitdoc.enabled": true
+}
