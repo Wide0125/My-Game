@@ -1,0 +1,41 @@
+# ninja log v7
+5	28	7782499691346006	C:/Users/brian/Desktop/Code/My Game/build/CMakeFiles/cmake.verify_globs	ec453889faf90e52
+59	214	7782499691889561	_deps/raylib-build/raylib/CMakeFiles/raylib.dir/utils.c.obj	37d440c770a2dea0
+44	270	7782499691739718	_deps/raylib-build/raylib/CMakeFiles/raylib.dir/rshapes.c.obj	2362691151917b05
+49	379	7782499691788079	_deps/raylib-build/raylib/CMakeFiles/raylib.dir/rtext.c.obj	4bbd6363c2b0b3ec
+86	478	7782499692147704	_deps/raylib-build/raylib/external/glfw/src/CMakeFiles/glfw.dir/platform.c.obj	77c3cba639cb263d
+91	486	7782499692209551	_deps/raylib-build/raylib/external/glfw/src/CMakeFiles/glfw.dir/vulkan.c.obj	ac6160c6f2a80821
+81	494	7782499692099968	_deps/raylib-build/raylib/external/glfw/src/CMakeFiles/glfw.dir/monitor.c.obj	cbb3867de7d49f21
+97	506	7782499692262010	_deps/raylib-build/raylib/external/glfw/src/CMakeFiles/glfw.dir/window.c.obj	a1f5876c435a5040
+64	522	7782499691937749	_deps/raylib-build/raylib/external/glfw/src/CMakeFiles/glfw.dir/context.c.obj	cb166b485aa8e4b0
+70	534	7782499691991081	_deps/raylib-build/raylib/external/glfw/src/CMakeFiles/glfw.dir/init.c.obj	34633c0c8b8d738e
+75	604	7782499692048770	_deps/raylib-build/raylib/external/glfw/src/CMakeFiles/glfw.dir/input.c.obj	24e7029eff6e0a53
+215	751	7782499693440081	_deps/raylib-build/raylib/external/glfw/src/CMakeFiles/glfw.dir/egl_context.c.obj	4a2ac90ed5927d04
+270	797	7782499693998721	_deps/raylib-build/raylib/external/glfw/src/CMakeFiles/glfw.dir/osmesa_context.c.obj	b9c53f9535d6096c
+39	812	7782499691683923	_deps/raylib-build/raylib/CMakeFiles/raylib.dir/rmodels.c.obj	eb8b9ab37e36cb90
+380	922	7782499695091634	_deps/raylib-build/raylib/external/glfw/src/CMakeFiles/glfw.dir/null_init.c.obj	a9810fe15a06446f
+479	948	7782499696081997	_deps/raylib-build/raylib/external/glfw/src/CMakeFiles/glfw.dir/null_monitor.c.obj	9d5533cc565526d4
+494	953	7782499696234951	_deps/raylib-build/raylib/external/glfw/src/CMakeFiles/glfw.dir/null_joystick.c.obj	599e28daf7f9b870
+487	984	7782499696162518	_deps/raylib-build/raylib/external/glfw/src/CMakeFiles/glfw.dir/null_window.c.obj	db3da189b114f7a5
+506	984	7782499696350587	_deps/raylib-build/raylib/external/glfw/src/CMakeFiles/glfw.dir/win32_module.c.obj	e42fd7347105654f
+525	986	7782499696541670	_deps/raylib-build/raylib/external/glfw/src/CMakeFiles/glfw.dir/win32_time.c.obj	c4da2d431d7ddcfe
+948	1009	7782499700771568	CMakeFiles/MyGame.dir/src/main.cpp.obj	3e14c818549d1f90
+534	1023	7782499696635711	_deps/raylib-build/raylib/external/glfw/src/CMakeFiles/glfw.dir/win32_thread.c.obj	361b5e47d9689009
+604	1108	7782499697323386	_deps/raylib-build/raylib/external/glfw/src/CMakeFiles/glfw.dir/win32_init.c.obj	3f2e75a83ef19382
+35	1136	7782499691638126	_deps/raylib-build/raylib/CMakeFiles/raylib.dir/rcore.c.obj	923b23e048468e73
+751	1191	7782499698800285	_deps/raylib-build/raylib/external/glfw/src/CMakeFiles/glfw.dir/win32_joystick.c.obj	a92542021b07a22a
+797	1195	7782499699260810	_deps/raylib-build/raylib/external/glfw/src/CMakeFiles/glfw.dir/win32_monitor.c.obj	bd4db077607464e7
+812	1252	7782499699413689	_deps/raylib-build/raylib/external/glfw/src/CMakeFiles/glfw.dir/win32_window.c.obj	b0e995a8eacdcd1b
+922	1261	7782499700514311	_deps/raylib-build/raylib/external/glfw/src/CMakeFiles/glfw.dir/wgl_context.c.obj	875bc9f54ecf2d51
+54	1489	7782499691834546	_deps/raylib-build/raylib/CMakeFiles/raylib.dir/rtextures.c.obj	3542eda0136d835a
+30	1794	7782499691591607	_deps/raylib-build/raylib/CMakeFiles/raylib.dir/raudio.c.obj	3352dfb39fd1bff0
+1794	1932	7782499709240668	_deps/raylib-build/raylib/raylib.lib	c500b3421196f773
+16	33	7782501554350436	C:/Users/brian/Desktop/Code/My Game/build/CMakeFiles/cmake.verify_globs	ec453889faf90e52
+13	29	7782503412260972	C:/Users/brian/Desktop/Code/My Game/build/CMakeFiles/cmake.verify_globs	ec453889faf90e52
+31	69	7782503412441533	CMakeFiles/MyGame.dir/src/main.cpp.obj	3e14c818549d1f90
+70	299	7782503412831893	MyGame.exe	2f656292e3ede871
+17	34	7782504169655096	C:/Users/brian/Desktop/Code/My Game/build/CMakeFiles/cmake.verify_globs	ec453889faf90e52
+35	85	7782504169836147	CMakeFiles/MyGame.dir/src/main.cpp.obj	3e14c818549d1f90
+85	241	7782504170334283	MyGame.exe	2f656292e3ede871
+16	32	7782504871948957	C:/Users/brian/Desktop/Code/My Game/build/CMakeFiles/cmake.verify_globs	ec453889faf90e52
+15	33	7782505693444836	C:/Users/brian/Desktop/Code/My Game/build/CMakeFiles/cmake.verify_globs	ec453889faf90e52
