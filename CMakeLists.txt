@@ -19,7 +19,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 target_link_libraries(${PROJECT_NAME} raylib) # link raylib's built static library
 
 target_compile_options(${PROJECT_NAME} PRIVATE
-    "-pedantic-errors -Wall"
+    "-Wpedantic-errors -Wall"
     "-Weffc++ -Wextra -Wconversion"
     "-Wsign-conversion -Werror"
 )
