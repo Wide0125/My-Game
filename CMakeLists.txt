@@ -14,15 +14,12 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS 3DRenderingPlayground-src/*.cpp)
 # declare our app
 add_executable(${PROJECT_NAME} ${SOURCES})
 target_include_directories(${PROJECT_NAME} PRIVATE
-  "raylib-cpp/include"
-)
-target_include_directories(${PROJECT_NAME} PRIVATE
-  "${raylib_SOURCE_DIR}/src"
+  "${raylib_SOURCE_DIR}/src" # tell the compiler to look for headers in raylib's src directory, so you can include raylib.h properly 
 )
 target_link_libraries(${PROJECT_NAME} raylib) # link raylib's built static library
 
 target_compile_options(${PROJECT_NAME} PRIVATE
-    # "-pedantic-errors" "-Wall"
-    # "-Weffc++" "-Wextra" "-Wconversion"
-    # "-Wsign-conversion" "-Werror"
+    "-Wpedantic-errors -Wall"
+    "-Weffc++ -Wextra -Wconversion"
+    "-Wsign-conversion -Werror"
 )
