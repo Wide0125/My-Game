@@ -16,6 +16,9 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 target_include_directories(${PROJECT_NAME} PRIVATE
   "${raylib_SOURCE_DIR}/src" # tell the compiler to look for headers in raylib's src directory, so you can include raylib.h properly 
 )
+target_include_directories(${PROJECT_NAME} PRIVATE
+  "raylib-cpp/include" 
+)
 target_link_libraries(${PROJECT_NAME} raylib) # link raylib's built static library
 
 target_compile_options(${PROJECT_NAME} PRIVATE
