@@ -23,7 +23,7 @@ endif()
 # set the SOURCES variable to everything cmake finds
 # configure depends means cmake will need to refresh your configuration every time you add a source file, otherwise that new file wont be built
 # declare our app
-add_executable(${PROJECT_NAME} src/main.cpp)
+add_executable(${PROJECT_NAME} src/main.cpp src/player.cpp)
 
 target_include_directories(${PROJECT_NAME} PRIVATE
   "raylib-cpp/include" 
