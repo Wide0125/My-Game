@@ -1,6 +1,8 @@
+#include <print>
 #include <raylib-cpp.hpp>
 #include <raylib.h>
 #include <string>
+#include "degree.hpp"
 #include "player.hpp"
 #include "constants.hpp"
 
@@ -27,18 +29,23 @@ int main() {
         
             ClearBackground(RAYWHITE);
 
+            player1.fall();
+            player2.fall();
+
             checkCollision(player1, player2);
 
             player1.move();
-            player1.fall();
-            player1.draw();
             player2.move();
-            player2.fall();
+
+            player1.draw();
             player2.draw();
             
             DrawRectangleRec(PLATFORMS[0], LIGHTGRAY);
             raylib::DrawText(std::to_string(GetFPS()), 10, 10, 20, RED);
 
+            if (IsKeyPressed(KEY_F)) {
+                player1.attack(player2);
+            }
         EndDrawing();
     }
     CloseWindow();

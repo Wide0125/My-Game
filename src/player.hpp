@@ -21,6 +21,8 @@ class Player {
 
         void jump();
 
+        void attack(Player&);
+
         friend void checkCollision(Player& player1, Player& player2);
 
     private:
@@ -29,6 +31,7 @@ class Player {
         raylib::Color m_color {RED};
         raylib::Vector2 m_moveVelocity {0, 0};
         double m_jumpPower {500};
+        double m_attackRange {30};
         int m_jumps {2};
         int m_jumpsRemaining {m_jumps};
 };

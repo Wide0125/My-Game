@@ -44,6 +44,10 @@ class Degree {
         friend inline constexpr auto operator-(const Degree&, const Degree&);
 
         friend inline constexpr auto operator<=(const Degree&, const Degree&);
+        friend inline constexpr auto operator>=(const Degree&, const Degree&);
+
+        friend inline constexpr auto operator<(const Degree&, const Degree&);
+        friend inline constexpr auto operator>(const Degree&, const Degree&);
 
     private:
         double m_angle {0};
@@ -62,4 +66,13 @@ inline constexpr Degree& operator+=(Degree& degree1, const Degree& degree2) {
 
 inline constexpr auto operator<=(const Degree& degree1, const Degree& degree2) {
     return degree1.m_angle <= degree2.m_angle;
+}
+inline constexpr auto operator>=(const Degree& degree1, const Degree& degree2) {
+    return degree1.m_angle >= degree2.m_angle;
+}
+inline constexpr auto operator<(const Degree& degree1, const Degree& degree2) {
+    return degree1.m_angle < degree2.m_angle;
+}
+inline constexpr auto operator>(const Degree& degree1, const Degree& degree2) {
+    return degree1.m_angle > degree2.m_angle;
 }
