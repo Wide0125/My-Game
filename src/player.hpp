@@ -6,8 +6,8 @@
 
 class Player {
     public:
-        Player(raylib::Vector2 position, double size = 20, raylib::Color color = BLACK)
-            : m_position {position}, m_size {size}, m_color {color}
+        Player(raylib::Vector2 position, double size = 20, raylib::Color color = BLACK, int healthbarLocation = 0, bool leftbar = true)
+            : m_position {position}, m_size {size}, m_color {color}, m_healthbarLocation {healthbarLocation}, m_leftbar {leftbar}
         {}
 
         void draw() const;
@@ -23,6 +23,14 @@ class Player {
 
         void attack(Player&);
 
+        void block();
+
+        void cooldown();
+
+        double calculateDamage(const Player& playerOther) const;
+        
+        bool dead();
+
         friend void checkCollision(Player& player1, Player& player2);
 
     private:
@@ -34,6 +42,13 @@ class Player {
         double m_attackRange {30};
         int m_jumps {2};
         int m_jumpsRemaining {m_jumps};
+        double m_hitPoints {100};
+        int m_healthbarLocation {0};
+        bool m_leftbar {true};
+        bool m_blocking {false};
+        int m_blockLength {3};
+        int m_blockCooldown {6};
+        int m_blockCooldownRemaining {0};
 };
 
 #endif // !PLAYER_HPP

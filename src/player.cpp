@@ -9,6 +9,9 @@
 
 void Player::draw() const {
         DrawCircle(m_position.x, m_position.y, m_size, m_color);
+        if (m_leftbar) {DrawRectangle(m_healthbarLocation, screenHeight - 100,  200 * m_hitPoints/100, 50, m_color);}
+        else {DrawRectangle(m_healthbarLocation - 200 * m_hitPoints/100, screenHeight - 100, 200 * m_hitPoints/100, 50, m_color);}
+        if (m_blocking) {DrawCircle(m_position.x, m_position.y, m_size + 30, {0, 255, 255, 50});}
     }
 
 void Player::move() {
@@ -24,6 +27,7 @@ void Player::fall() {
         }
     }
     m_moveVelocity.y += GRAVITYACCEL;
+    if(m_position.y > screenHeight + m_size) {m_hitPoints = 0;}
 }
 void Player::setMoveVelocityX(double x) {
     m_moveVelocity.x = x;
@@ -54,20 +58,42 @@ void Player::jump() {
     }
 }
 
+bool Player::dead() {return m_hitPoints <= 0;}
+
+double Player::calculateDamage(const Player& playerOther) const {
+    Vector2 playerToOther {playerOther.m_position - m_position};
+    return sqrt(sqrt(Vector2DotProduct(m_moveVelocity, playerToOther)));
+}
+
 void Player::attack(Player& playerOther) {
 
     if (static_cast<int>(std::floor(Vector2DotProduct(m_moveVelocity, m_moveVelocity)) == 0)) {return;}
 
     double distance {sqrt(Vector2DotProduct(m_position - playerOther.m_position, m_position - playerOther.m_position)) - m_size - playerOther.m_size};
-    Degree playerAngle {atan(m_moveVelocity.y / m_moveVelocity.x) * 180/std::numbers::pi};
-    Degree playerOtherAngle {atan(playerOther.m_position.y / playerOther.m_position.x) * 180/std::numbers::pi};
+    Degree playerAngle {atan2(m_moveVelocity.y, m_moveVelocity.x) * 180/std::numbers::pi};
+    Vector2 playerToOther {playerOther.m_position - m_position};
+    Degree playerOtherAngle {atan2(playerToOther.y, playerToOther.x) * 180/std::numbers::pi};
 
     DrawCircleSector(m_position, m_size + m_attackRange, playerAngle.get() + 60, playerAngle.get() - 60, 100, raylib::GREEN);
 
     DrawCircleSector(m_position, m_size, playerAngle.get() + 60, playerAngle.get() - 60, 100, m_color);
 
-    if (playerOtherAngle <= playerAngle + 60 and playerOtherAngle >= playerAngle - 60 and distance <= m_attackRange) {
-        
+    if (playerOtherAngle.get() <= playerAngle.get() + 60 and playerOtherAngle.get() >= playerAngle.get() - 60 and distance <= m_attackRange and !playerOther.m_blocking) {
+        playerOther.m_hitPoints -= calculateDamage(playerOther);
+    }
+}
+
+void Player::block() {
+    if (m_blockCooldownRemaining == 0) {
+        m_blocking = true;
+        m_blockCooldownRemaining = 6;
+    }
+}
+
+void Player::cooldown() {
+    if (m_blockCooldownRemaining > 0) {
+        m_blockCooldownRemaining -= 1;
+        if (m_blockCooldownRemaining <= m_blockCooldown - m_blockLength) {m_blocking = false;}
     }
 }
 

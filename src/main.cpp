@@ -10,11 +10,23 @@ int main() {
 
     raylib::InitWindow(screenWidth, screenHeight);
 
-    Player player1 {{200, 300}, 20, RED};
-    Player player2 {{960 - 200, 300}, 20, BLUE};
+    Player player1 {{200, 300}, 20, RED, 100};
+    Player player2 {{960 - 200, 300}, 20, BLUE, screenWidth - 100, false};
 
     SetTargetFPS(FPS);
     while (!WindowShouldClose()) {
+        if (player1.dead()) {
+            BeginDrawing();
+            DrawText("Player 2 Wins!", 300, screenHeight - 300, 50, BLUE);
+            EndDrawing();
+            continue;
+        }
+        else if (player2.dead()) {
+            BeginDrawing();
+            DrawText("Player 1 Wins!", 300, screenHeight - 300, 50, RED);
+            EndDrawing();
+            continue;
+        }
         player1.setMoveVelocityX(0);
         if (IsKeyPressed(KEY_W)) {player1.jump();}
         if (IsKeyDown(KEY_D)) {player1.setMoveVelocityX(300);}
@@ -35,7 +47,9 @@ int main() {
             checkCollision(player1, player2);
 
             player1.move();
+            player1.cooldown();
             player2.move();
+            player2.cooldown();
 
             player1.draw();
             player2.draw();
@@ -45,6 +59,15 @@ int main() {
 
             if (IsKeyPressed(KEY_F)) {
                 player1.attack(player2);
+            }
+            if(IsKeyPressed(KEY_G)) {
+                player1.block();
+            }
+            if (IsKeyPressed(KEY_COMMA)) {
+                player2.attack(player1);
+            }
+            if (IsKeyPressed(KEY_PERIOD)) {
+                player2.block();
             }
         EndDrawing();
     }
