@@ -12,26 +12,16 @@ if (NOT raylib_FOUND) # If there's none, fetch and build raylib
     DOWNLOAD_EXTRACT_TIMESTAMP OFF
     URL https://github.com/raysan5/raylib/archive/refs/tags/${RAYLIB_VERSION}.tar.gz
   )
-  FetchContent_GetProperties(raylib)
+  FetchContent_GetPropertiefs(raylib)
   if (NOT raylib_POPULATED) # Have we downloaded raylib yet?
     set(FETCHCONTENT_QUIET NO)
     FetchContent_MakeAvailable(raylib)
   endif()
 endif()
 
-# find ALL .cpp source files in your project
-# set the SOURCES variable to everything cmake finds
-# configure depends means cmake will need to refresh your configuration every time you add a source file, otherwise that new file wont be built
-# declare our app
-add_executable(${PROJECT_NAME} src/main.cpp src/player.cpp)
+add_executable(${PROJECT_NAME} src/main.cpp)
 
+target_link_libraries(${PROJECT_NAME} raylib)
 target_include_directories(${PROJECT_NAME} PRIVATE
   "raylib-cpp/include" 
-)
-target_link_libraries(${PROJECT_NAME} raylib)
-
-target_compile_options(${PROJECT_NAME} PRIVATE
-    "-Wpedantic-errors -Wall"
-    "-Weffc++ -Wextra -Wconversion"
-    "-Wsign-conversion -Werror"
 )
