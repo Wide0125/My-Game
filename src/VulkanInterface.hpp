@@ -10,6 +10,8 @@
 import vulkan_hpp;
 #endif
 
+#include "vk_mem_alloc.h"
+
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -17,6 +19,8 @@ class VulkanInterface {
     public:
         VulkanInterface();
     private:
+        static constexpr int MAX_FRAMES_IN_FLIGHT {2};
+
         GLFWwindow* m_window {nullptr}; // GLFW window object
 
         vk::raii::Context m_context {};
@@ -32,6 +36,8 @@ class VulkanInterface {
         std::vector<const char*> m_requiredDeviceExtensions {
             vk::KHRSwapchainExtensionName
         };
+
+        VmaAllocator m_allocator {};
  
         vk::raii::SwapchainKHR m_swapChain {nullptr};
         std::vector<vk::Image> m_swapChainImages {};
@@ -44,19 +50,30 @@ class VulkanInterface {
         vk::raii::PipelineLayout m_pipelineLayout {nullptr};
 
         vk::raii::CommandPool m_commandPool {nullptr};
+        std::vector<vk::raii::CommandBuffer> m_commandBuffers {};
 
         vk::raii::Image m_depthImage {nullptr};
-        vk::raii::DeviceMemory m_depthImageMemory {nullptr};
+        VmaAllocation m_depthImageAllocation {nullptr};
         vk::raii::ImageView m_depthImageView {nullptr};
 
-        vk::raii::Buffer vertexBuffer {nullptr};
-        vk::raii::DeviceMemory vertexBufferMemory {nullptr};
-        vk::raii::Buffer indexBuffer {nullptr};
-        vk::raii::DeviceMemory indexBufferMemory {nullptr};
+        vk::raii::Buffer m_vertexBuffer {nullptr};
+        vk::raii::DeviceMemory m_vertexBufferMemory {nullptr};
+        vk::raii::Buffer m_indexBuffer {nullptr};
+        vk::raii::DeviceMemory m_indexBufferMemory {nullptr};
+
+        void createBuffer(vk::DeviceSize, vk::BufferUsageFlags, vk::raii::Buffer&, VmaAllocation&) const;
+
+        std::vector<vk::raii::Buffer> m_uniformBuffers {};
+        std::vector<VmaAllocation> m_uniformBufferALlocations {};
+
+        std::vector<vk::raii::Semaphore> m_presentCompleteSemaphores {};
+        std::vector<vk::raii::Semaphore> m_renderFinishedSemaphores {};
+        std::vector<vk::raii::Fence> m_inFlightFences {};
 
 
-        void initWindow(); // intialize GLFW window for Vulkan
+        void initWindow(); // initialize GLFW window for Vulkan
         void initVulkan(); // initialize Vulkan
+        void cleanup();
 
         void createInstance(); // initialize Vulkan
         void createSurface(); // create surface for Vulkan to draw on, linked to the created GLFW window
@@ -65,13 +82,17 @@ class VulkanInterface {
         void pickPhysicalDevice(); // pick physical GPU to run Vulkan on
         void createLogicalDevice(); // create logical device to interface with physical GPU
 
+        void createVmaAllocator(); // initialize VMA library
+
         vk::Extent2D chooseSwapExtent(const vk::SurfaceCapabilitiesKHR&) const; // choose extent(size) of swap chain
         static uint32_t chooseSwapMinImageCount(const vk::SurfaceCapabilitiesKHR&);
         static vk::SurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>&);
-        void createSwapChain(); // create swapchain of surfaces
+        void createSwapChain(); // create swap chain of surfaces
         void createSwapChainImageViews(); // create image views of swap chain images
 
         void createDescriptorSetLayout();
+
+        void createUniformBuffers();
 
         static std::vector<char> readFile(const std::string&);
         [[nodiscard]] vk::raii::ShaderModule createShaderModule(const std::vector<char>&) const;
@@ -82,12 +103,13 @@ class VulkanInterface {
         void createCommandPool();
 
         uint32_t findMemoryType(uint32_t, vk::MemoryPropertyFlags) const;
-        void createImage(uint32_t, uint32_t, uint32_t, vk::Format, vk::ImageTiling, vk::ImageUsageFlags, vk::MemoryPropertyFlags, vk::raii::Image&, vk::raii::DeviceMemory&) const;
+        void createImage(uint32_t, uint32_t, uint32_t, vk::Format, vk::ImageTiling, vk::ImageUsageFlags, vk::raii::Image&, VmaAllocation&) const;
         [[nodiscard]] vk::raii::ImageView createImageView(const vk::raii::Image&, vk::Format, vk::ImageAspectFlags, uint32_t) const;
         void createDepthResources();
 
-        void createVertexBuffer();
-        void createIndexBuffer();
+        void createCommandBuffers();
+
+        void createSyncObjects();
 };
 
 #endif // !VULKANINTERFACE_HPP

@@ -7,6 +7,9 @@
 import vulkan_hpp;
 #endif
 
+#define VMA_IMPLEMENTATION
+#include "vk_mem_alloc.h"
+
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -26,9 +29,17 @@ import vulkan_hpp;
 
 #include "vertex.hpp"
 
+struct UniformBufferObject
+{
+	alignas(16) glm::mat4 model;
+	alignas(16) glm::mat4 view;
+	alignas(16) glm::mat4 proj;
+};
+
 VulkanInterface::VulkanInterface() {
     initWindow();
     initVulkan();
+    cleanup();
 }
 
 void VulkanInterface::initWindow() {
@@ -44,22 +55,26 @@ void VulkanInterface::initWindow() {
     glfwWindowHint(GLFW_BLUE_BITS, mode->blueBits);
     glfwWindowHint(GLFW_REFRESH_RATE, mode->refreshRate);
 
-    m_window = glfwCreateWindow(mode->width, mode->height, "My Game", monitor, NULL);
+    m_window = glfwCreateWindow(mode->width, mode->height, "My Game", nullptr, NULL);
 }
-
 void VulkanInterface::initVulkan() {
     createInstance();
     createSurface();
     pickPhysicalDevice();
     createLogicalDevice();
+    createVmaAllocator();
     createSwapChain();
     createSwapChainImageViews();
     createDescriptorSetLayout();
     createGraphicsPipeline();
-    createCommandPool();
+    createCommandPool(); 
     createDepthResources();
-    createVertexBuffer();
-    createIndexBuffer();
+    createCommandBuffers();
+    createSyncObjects();
+}
+void VulkanInterface::cleanup() {
+    glfwDestroyWindow(m_window);
+    glfwTerminate();
 }
 
 void VulkanInterface::createInstance() {
@@ -196,6 +211,16 @@ void VulkanInterface::createLogicalDevice() {
     m_queue = {m_device, m_queueFamilyIndex, 0};
 }
 
+void VulkanInterface::createVmaAllocator() {
+    VmaAllocatorCreateInfo allocatorCreateInfo {
+        .physicalDevice = *m_physicalDevice,
+        .device = *m_device,
+        .instance = *m_instance,
+        .vulkanApiVersion = VK_API_VERSION_1_4
+    };
+    vmaCreateAllocator(&allocatorCreateInfo, &m_allocator);
+}
+
 vk::Extent2D VulkanInterface::chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& surfaceCapabilities) const {
     if (surfaceCapabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
         return surfaceCapabilities.currentExtent;
@@ -251,7 +276,6 @@ void VulkanInterface::createSwapChain() {
     m_swapChain = {m_device, swapChainCreateInfo};
     m_swapChainImages = m_swapChain.getImages();
 }
-
 void VulkanInterface::createSwapChainImageViews() {
     assert(m_swapChainImageViews.empty());
 
@@ -451,7 +475,7 @@ uint32_t VulkanInterface::findMemoryType(uint32_t typeFilter, vk::MemoryProperty
 
     throw std::runtime_error("failed to find suitable memory type!");
 }
-void VulkanInterface::createImage(uint32_t width, uint32_t height, uint32_t mipLevels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::raii::Image& image, vk::raii::DeviceMemory& imageMemory) const {
+void VulkanInterface::createImage(uint32_t width, uint32_t height, uint32_t mipLevels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::raii::Image& image, VmaAllocation& allocation) const {
     vk::ImageCreateInfo imageInfo{
         .imageType     = vk::ImageType::e2D,
         .format        = format,
@@ -462,15 +486,15 @@ void VulkanInterface::createImage(uint32_t width, uint32_t height, uint32_t mipL
         .tiling        = tiling,
         .usage         = usage,
         .sharingMode   = vk::SharingMode::eExclusive,
-        .initialLayout = vk::ImageLayout::eUndefined};
-    image = vk::raii::Image(m_device, imageInfo);
+        .initialLayout = vk::ImageLayout::eUndefined
+    };
 
-    vk::MemoryRequirements memRequirements = image.getMemoryRequirements();
-    vk::MemoryAllocateInfo allocInfo{
-        .allocationSize  = memRequirements.size,
-        .memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties)};
-    imageMemory = vk::raii::DeviceMemory(m_device, allocInfo);
-    image.bindMemory(imageMemory, 0);
+    VmaAllocationCreateInfo allocInfo {};
+    allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+
+    VkImage imageTemp {};
+    vmaCreateImage(m_allocator, &*imageInfo, &allocInfo, &imageTemp, &allocation, nullptr);
+    image = {m_device, imageTemp};
 }
 [[nodiscard]] vk::raii::ImageView VulkanInterface::createImageView(const vk::raii::Image& image, vk::Format format, vk::ImageAspectFlags aspectFlags, uint32_t mipLevels) const {
     vk::ImageViewCreateInfo viewInfo{
@@ -483,7 +507,42 @@ void VulkanInterface::createImage(uint32_t width, uint32_t height, uint32_t mipL
 void VulkanInterface::createDepthResources() {
     vk::Format depthFormat {findDepthFormat()};
 
-    createImage(m_swapChainExtent.width, m_swapChainExtent.height, 1, depthFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::MemoryPropertyFlagBits::eDeviceLocal, m_depthImage, m_depthImageMemory);
+    createImage(m_swapChainExtent.width, m_swapChainExtent.height, 1, depthFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, m_depthImage, m_depthImageAllocation);
     m_depthImageView = createImageView(m_depthImage, depthFormat, vk::ImageAspectFlagBits::eDepth, 1);
 }
+
+void VulkanInterface::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::raii::Buffer& buffer, VmaAllocation& allocation) const {
+    VkBufferCreateInfo bufferInfo {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bufferInfo.size = size;
+    bufferInfo.usage = static_cast<VkBufferUsageFlags>(usage);
+    
+    VmaAllocationCreateInfo allocInfo {};
+    allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+    
+    VkBuffer bufferTemp;
+    vmaCreateBuffer(m_allocator, &bufferInfo, &allocInfo, &bufferTemp, &allocation, nullptr);
+    buffer = {m_device, bufferTemp};
+}
+
+void VulkanInterface::createCommandBuffers() {
+    m_commandBuffers.clear();
+    vk::CommandBufferAllocateInfo allocInfo{
+        .commandPool = m_commandPool,
+        .level = vk::CommandBufferLevel::ePrimary,
+        .commandBufferCount = MAX_FRAMES_IN_FLIGHT
+    };
+    m_commandBuffers = vk::raii::CommandBuffers{m_device, allocInfo};
+}
+
+void VulkanInterface::createSyncObjects() {
+    assert(m_presentCompleteSemaphores.empty() and m_renderFinishedSemaphores.empty() and m_inFlightFences.empty());
+    for (size_t i {0}; i < m_swapChainImages.size(); ++i) {
+        m_renderFinishedSemaphores.emplace_back(m_device, vk::SemaphoreCreateInfo());
+    }
+    for (size_t i {0}; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+        m_presentCompleteSemaphores.emplace_back(m_device, vk::SemaphoreCreateInfo());
+        m_inFlightFences.emplace_back(m_device, vk::FenceCreateInfo{.flags = vk::FenceCreateFlagBits::eSignaled});
+    }
+}
+
 

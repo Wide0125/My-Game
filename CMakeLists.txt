@@ -4,7 +4,7 @@ project(MyGame)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_COMPILER /opt/homebrew/opt/llvm/bin/clang++)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Add option to enable/disable C++ 20 module
 option(ENABLE_CPP20_MODULE "Enable C++ 20 module support for Vulkan" OFF)
@@ -14,8 +14,14 @@ if(ENABLE_CPP20_MODULE)
   set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 endif()
 
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
 find_package(Vulkan 1.4.335 REQUIRED)
+list(APPEND CMAKE_PREFIX_PATH "${CMAKE_CURRENT_SOURCE_DIR}/glfw3.4/lib/cmake")
 find_package(glfw3 REQUIRED)
+find_package(glm REQUIRED)
+set(glfw3_DIR "${CMAKE_CURRENT_SOURCE_DIR}/glfw3.4/lib/cmake")
+find_package(tinygltf REQUIRED)
 
 if(ENABLE_CPP20_MODULE)
   add_library(VulkanCppModule)
@@ -70,7 +76,7 @@ add_executable(${PROJECT_NAME}
   src/VulkanInterface.cpp
   )
 
-target_link_libraries (${PROJECT_NAME} Vulkan::cppm glfw)
+target_link_libraries (${PROJECT_NAME} Vulkan::cppm glfw glm::glm tinygltf)
 
 find_program(SLANGC_EXECUTABLE slangc HINTS $ENV{VULKAN_SDK}/bin REQUIRED)
 # Slang shader
@@ -98,6 +104,12 @@ add_slang_shader_target(foo SOURCES ${SHADER_SLANG_SOURCES})
 add_dependencies(${PROJECT_NAME} foo)
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE 
-    SHADER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/shaders"
+  SHADER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/shaders"
+  SCENE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/scenes"
+)
+
+target_precompile_headers(${PROJECT_NAME} PRIVATE
+    <vulkan/vulkan.hpp>
+    <vulkan/vulkan_raii.hpp>
 )
 
