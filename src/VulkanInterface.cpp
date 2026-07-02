@@ -1,5 +1,10 @@
-#include "VulkanInterface.hpp"
-#include "vulkan/vulkan.hpp"
+#include <cstdint>
+#include <stdexcept>
+#include <print>
+#include <algorithm>
+#include <array>
+#include <fstream>
+#include <variant>
 
 #if defined(__INTELLISENSE__) || !defined(USE_CPP20_MODULES)
 #include <vulkan/vulkan_raii.hpp>
@@ -13,24 +18,22 @@ import vulkan_hpp;
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-#define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/hash.hpp>
 
-#include <cstdint>
-#include <stdexcept>
-#include <print>
-#include <algorithm>
-#include <array>
-#include <fstream>
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
 
+#include <fastgltf/types.hpp>
+#include <fastgltf/util.hpp>
+#include <string>
+
+#include "VulkanInterface.hpp"
 #include "vertex.hpp"
 
-struct UniformBufferObject
-{
+struct UniformBufferObject {
 	alignas(16) glm::mat4 model;
 	alignas(16) glm::mat4 view;
 	alignas(16) glm::mat4 proj;
@@ -39,6 +42,9 @@ struct UniformBufferObject
 VulkanInterface::VulkanInterface() {
     initWindow();
     initVulkan();
+}
+
+VulkanInterface::~VulkanInterface() {
     cleanup();
 }
 
@@ -72,7 +78,16 @@ void VulkanInterface::initVulkan() {
     createCommandBuffers();
     createSyncObjects();
 }
+void VulkanInterface::loadScene(const fastgltf::Asset& asset) {
+    createTextureImages(asset);
+    createTextureSamplers(asset);
+    loadModels(asset);
+}
 void VulkanInterface::cleanup() {
+    vmaDestroyImage(m_allocator, *m_depthImage, m_depthImageAllocation);
+    for (size_t i {0}; i < m_textureImages.size(); ++i) {
+        vmaDestroyImage(m_allocator, *m_textureImages[i], m_textureImageAllocations[i]);
+    }
     glfwDestroyWindow(m_window);
     glfwTerminate();
 }
@@ -190,7 +205,7 @@ void VulkanInterface::createLogicalDevice() {
     vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain {
         {.features = {.samplerAnisotropy = true}}, // vk::PhysicalDeviceFeatures2
         {.synchronization2 = true, .dynamicRendering = true}, // vk::PhysicalDeviceVulkan13Features
-        {.extendedDynamicState = true} // tvk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
+        {.extendedDynamicState = true} // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
     };
 
     // create a device
@@ -534,6 +549,29 @@ void VulkanInterface::createCommandBuffers() {
     m_commandBuffers = vk::raii::CommandBuffers{m_device, allocInfo};
 }
 
+std::unique_ptr<vk::raii::CommandBuffer> VulkanInterface::beginSingleTimeCommands() const {
+    vk::CommandBufferAllocateInfo allocInfo {
+        .commandPool        = m_commandPool,
+        .level              = vk::CommandBufferLevel::ePrimary,
+        .commandBufferCount = 1
+    };
+    std::unique_ptr<vk::raii::CommandBuffer> commandBuffer = std::make_unique<vk::raii::CommandBuffer>(std::move(vk::raii::CommandBuffers(m_device, allocInfo).front()));
+
+    vk::CommandBufferBeginInfo beginInfo {
+        .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit
+    };
+    commandBuffer->begin(beginInfo);
+
+    return commandBuffer;
+}
+void VulkanInterface::endSingleTimeCommands(const vk::raii::CommandBuffer& commandBuffer) const {
+    commandBuffer.end();
+
+    vk::SubmitInfo submitInfo{.commandBufferCount = 1, .pCommandBuffers = &*commandBuffer};
+    m_queue.submit(submitInfo, nullptr);
+    m_queue.waitIdle();
+}
+
 void VulkanInterface::createSyncObjects() {
     assert(m_presentCompleteSemaphores.empty() and m_renderFinishedSemaphores.empty() and m_inFlightFences.empty());
     for (size_t i {0}; i < m_swapChainImages.size(); ++i) {
@@ -546,3 +584,273 @@ void VulkanInterface::createSyncObjects() {
 }
 
 
+void VulkanInterface::transitionImageLayout(const vk::raii::Image& image, const vk::ImageLayout oldLayout, const vk::ImageLayout newLayout, uint32_t mipLevels) const {
+    const auto commandBuffer {beginSingleTimeCommands()};
+
+    vk::ImageMemoryBarrier barrier {
+        .oldLayout = oldLayout,
+        .newLayout = newLayout,
+        .image = image,
+        .subresourceRange = {
+            .aspectMask = vk::ImageAspectFlagBits::eColor,
+            .baseMipLevel = 0,
+            .levelCount = mipLevels,
+            .baseArrayLayer = 0,
+            .layerCount = 1
+        }
+    };
+
+    vk::PipelineStageFlags sourceStage {};
+    vk::PipelineStageFlags destinationStage {};
+
+    if (oldLayout == vk::ImageLayout::eUndefined and newLayout == vk::ImageLayout::eTransferDstOptimal) {
+        barrier.srcAccessMask = {};
+        barrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
+
+        sourceStage      = vk::PipelineStageFlagBits::eTopOfPipe;
+        destinationStage = vk::PipelineStageFlagBits::eTransfer;
+    }
+    else if (oldLayout == vk::ImageLayout::eTransferDstOptimal and newLayout == vk::ImageLayout::eShaderReadOnlyOptimal) {
+        barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+        barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+
+        sourceStage      = vk::PipelineStageFlagBits::eTransfer;
+        destinationStage = vk::PipelineStageFlagBits::eFragmentShader;
+    }
+    else {
+        throw std::invalid_argument("unsupported layout transition!");
+    }
+
+    commandBuffer->pipelineBarrier(sourceStage, destinationStage, {}, {}, nullptr, barrier);
+    endSingleTimeCommands(*commandBuffer);
+}
+void VulkanInterface::copyBufferToImage(const vk::raii::Buffer& buffer, const vk::raii::Image& image, uint32_t width, uint32_t height) const {
+    std::unique_ptr<vk::raii::CommandBuffer> commandBuffer = beginSingleTimeCommands();
+    vk::BufferImageCopy region {
+        .bufferOffset = 0,
+        .bufferRowLength = 0,
+        .bufferImageHeight = 0,
+        .imageSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
+        .imageOffset = {0, 0, 0},
+        .imageExtent = {width, height, 1}
+    };
+    commandBuffer->copyBufferToImage(buffer, image, vk::ImageLayout::eTransferDstOptimal, {region});
+    endSingleTimeCommands(*commandBuffer);
+}
+void VulkanInterface::generateMipmaps(vk::raii::Image& image, vk::Format imageFormat, int32_t texWidth, int32_t texHeight, uint32_t mipLevels) const {
+    // Check if image format supports linear blit-ing
+    vk::FormatProperties formatProperties = m_physicalDevice.getFormatProperties(imageFormat);
+
+    if (!(formatProperties.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImageFilterLinear)) {throw std::runtime_error("texture image format does not support linear blitting!");}
+
+    std::unique_ptr<vk::raii::CommandBuffer> commandBuffer = beginSingleTimeCommands();
+
+    vk::ImageMemoryBarrier barrier = {
+        .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
+        .dstAccessMask = vk::AccessFlagBits::eTransferRead,
+        .oldLayout = vk::ImageLayout::eTransferDstOptimal,
+        .newLayout = vk::ImageLayout::eTransferSrcOptimal,
+        .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
+        .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
+        .image = image
+    };
+
+    int32_t mipWidth = texWidth;
+    int32_t mipHeight = texHeight;
+
+    for (uint32_t i {1}; i < mipLevels; ++i) {
+        barrier.subresourceRange.baseMipLevel = i - 1;
+        barrier.oldLayout = vk::ImageLayout::eTransferDstOptimal;
+        barrier.newLayout = vk::ImageLayout::eTransferSrcOptimal;
+        barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+        barrier.dstAccessMask = vk::AccessFlagBits::eTransferRead;
+
+        commandBuffer->pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, barrier);
+
+        vk::ArrayWrapper1D<vk::Offset3D, 2> offsets, dstOffsets;
+        offsets[0] = vk::Offset3D(0, 0, 0);
+        offsets[1] = vk::Offset3D(mipWidth, mipHeight, 1);
+        dstOffsets[0] = vk::Offset3D(0, 0, 0);
+        dstOffsets[1] = vk::Offset3D(mipWidth > 1 ? mipWidth / 2 : 1, mipHeight > 1 ? mipHeight / 2 : 1, 1);
+        vk::ImageBlit blit = {.srcSubresource = {}, .srcOffsets = offsets, .dstSubresource = {}, .dstOffsets = dstOffsets};
+        blit.srcSubresource = vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, i - 1, 0, 1);
+        blit.dstSubresource = vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, i, 0, 1);
+
+        commandBuffer->blitImage(image, vk::ImageLayout::eTransferSrcOptimal, image, vk::ImageLayout::eTransferDstOptimal, {blit}, vk::Filter::eLinear);
+
+        barrier.oldLayout = vk::ImageLayout::eTransferSrcOptimal;
+        barrier.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+        barrier.srcAccessMask = vk::AccessFlagBits::eTransferRead;
+        barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+
+        commandBuffer->pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, barrier);
+
+        if (mipWidth > 1) {mipWidth /= 2;}
+        if (mipHeight > 1) {mipHeight /= 2;}
+    }
+    barrier.subresourceRange.baseMipLevel = mipLevels - 1;
+    barrier.oldLayout = vk::ImageLayout::eTransferDstOptimal;
+    barrier.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+    barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+    barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+
+    commandBuffer->pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, barrier);
+
+    endSingleTimeCommands(*commandBuffer);
+}
+void VulkanInterface::createTextureImages(const fastgltf::Asset& asset) {
+    m_textureImages.clear();
+    m_textureImageAllocations.clear();
+    m_textureImageViews.clear();
+    
+    m_textureImages.reserve(asset.images.size());
+    m_textureImageAllocations.reserve(asset.images.size());
+    m_textureImageViews.reserve(asset.images.size());
+    for (const auto& image : asset.images) {
+        int texWidth {};
+        int texHeight {};
+        int texChannels {};
+        stbi_uc* pixels;
+        
+        std::visit(fastgltf::visitor {
+            [](...) {},
+            [&](const fastgltf::sources::URI& filePath) {
+                std::println("Loading image from external file...");
+                assert(filePath.fileByteOffset == 0);
+                assert(filePath.uri.isLocalPath());
+                const std::string path {std::string{SCENE_PATH} + "/" + std::string{filePath.uri.path()}};
+                pixels = stbi_load(path.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+            },
+            [&](const fastgltf::sources::Vector& vector) {
+                std::println("Loading image directly from memory...");
+                pixels = stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(vector.bytes.data()), static_cast<int>(vector.bytes.size()), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+            },
+            [&](const fastgltf::sources::BufferView& bufferViewSource) {
+                std::println("Loading image from buffer through a bufferView...");
+                auto& bufferView = asset.bufferViews[bufferViewSource.bufferViewIndex];
+                auto& buffer = asset.buffers[bufferView.bufferIndex];
+                std::visit(fastgltf::visitor {
+                    [](auto& arg) {},
+                    [&](fastgltf::sources::Vector& vector) {
+                        pixels = stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(vector.bytes.data() + bufferView.byteOffset), static_cast<int>(bufferView.byteLength), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+                    }
+                }, buffer.data);
+            }
+        }, image.data); // load image
+        if (!pixels) {throw std::runtime_error("Failed to load texture image!");}
+        mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
+
+        vk::raii::Buffer stagingBuffer {nullptr};
+        VmaAllocation stagingAllocation {};
+        createBuffer(texWidth * texHeight * 4, vk::BufferUsageFlagBits::eTransferSrc, stagingBuffer, stagingAllocation);
+
+        void *stagingData {};
+        vmaMapMemory(m_allocator, stagingAllocation, &stagingData);
+        memcpy(stagingData, pixels, texWidth * texHeight * 4);
+        vmaUnmapMemory(m_allocator, stagingAllocation);
+
+        stbi_image_free(pixels);
+
+        vk::raii::Image imageTemp {nullptr};
+        VmaAllocation imageAllocationTemp {nullptr};
+        createImage(texWidth, texHeight, mipLevels, vk::Format::eR8G8B8A8Srgb, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, imageTemp, imageAllocationTemp);
+
+        transitionImageLayout(imageTemp, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferSrcOptimal, mipLevels);
+        copyBufferToImage(stagingBuffer, imageTemp, texWidth, texHeight);
+        vmaDestroyBuffer(m_allocator, *stagingBuffer, stagingAllocation);
+
+        generateMipmaps(imageTemp, vk::Format::eR8G8B8A8Srgb, texWidth, texHeight, mipLevels);
+
+        auto imageViewTemp {createImageView(imageTemp, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor, mipLevels)};
+
+        m_textureImages.push_back(std::move(imageTemp));
+        m_textureImageAllocations.push_back(std::move(imageAllocationTemp));
+        m_textureImageViews.push_back(std::move(imageViewTemp));
+    }
+}
+void VulkanInterface::createTextureSamplers(const fastgltf::Asset& asset) {
+    m_textureSamplers.clear();
+    m_textureSamplers.reserve(asset.samplers.size());
+    for (const auto& sampler : asset.samplers) {
+        vk::PhysicalDeviceProperties properties = m_physicalDevice.getProperties();
+
+        assert(sampler.magFilter.has_value());
+        vk::Filter magFilter {};
+        switch(sampler.magFilter.value()) {
+            case fastgltf::Filter::Linear:
+                magFilter = vk::Filter::eLinear;
+                break;
+            default:
+                magFilter = vk::Filter::eNearest;
+        }
+        assert(sampler.minFilter.has_value());
+        vk::Filter minFilter {};
+        vk::SamplerMipmapMode mipmapMode {};
+        switch(sampler.magFilter.value()) {
+            case fastgltf::Filter::Linear:
+            case fastgltf::Filter::LinearMipMapLinear:
+                minFilter = vk::Filter::eLinear;
+                mipmapMode = vk::SamplerMipmapMode::eLinear;
+                break;
+            case fastgltf::Filter::Nearest:
+            case fastgltf::Filter::NearestMipMapLinear:
+                minFilter = vk::Filter::eNearest;
+                mipmapMode = vk::SamplerMipmapMode::eLinear;
+                break;
+            case fastgltf::Filter::LinearMipMapNearest:
+                minFilter = vk::Filter::eLinear;
+                mipmapMode = vk::SamplerMipmapMode::eNearest;
+                break;
+            case fastgltf::Filter::NearestMipMapNearest:
+                minFilter = vk::Filter::eNearest;
+                mipmapMode = vk::SamplerMipmapMode::eNearest;
+                break;
+        }
+        vk::SamplerAddressMode addressModeU {};
+        switch(sampler.wrapS) {
+            case fastgltf::Wrap::ClampToEdge:
+                addressModeU = vk::SamplerAddressMode::eClampToEdge;
+                break;
+            case fastgltf::Wrap::MirroredRepeat:
+                addressModeU = vk::SamplerAddressMode::eMirroredRepeat;
+                break;
+            case fastgltf::Wrap::Repeat:
+                addressModeU = vk::SamplerAddressMode::eRepeat;
+                break;
+        }
+        vk::SamplerAddressMode addressModeV {};
+        switch(sampler.wrapT) {
+            case fastgltf::Wrap::ClampToEdge:
+                addressModeV = vk::SamplerAddressMode::eClampToEdge;
+                break;
+            case fastgltf::Wrap::MirroredRepeat:
+                addressModeV = vk::SamplerAddressMode::eMirroredRepeat;
+                break;
+            case fastgltf::Wrap::Repeat:
+                addressModeV = vk::SamplerAddressMode::eRepeat;
+                break;
+        }
+		vk::SamplerCreateInfo samplerInfo {
+            .magFilter = magFilter,
+            .minFilter = minFilter,
+            .mipmapMode = mipmapMode,
+            .addressModeU = addressModeU,
+            .addressModeV = addressModeV,
+            .addressModeW = vk::SamplerAddressMode::eRepeat,
+            .mipLodBias = 0.0f,
+            .anisotropyEnable = vk::True,
+            .maxAnisotropy = properties.limits.maxSamplerAnisotropy,
+            .compareEnable = vk::False,
+            .compareOp = vk::CompareOp::eAlways,
+            .minLod = 0.0f,
+            .maxLod = vk::LodClampNone
+        };
+		m_textureSamplers.push_back(std::move(vk::raii::Sampler(m_device, samplerInfo)));
+    }
+}
+
+void VulkanInterface::loadModels(const fastgltf::Asset& asset) {
+    for (const auto& mesh : asset.meshes) {
+        
+    }
+}

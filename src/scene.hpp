@@ -1,38 +1,39 @@
 #ifndef SCENE_HPP
 #define SCENE_HPP
 
+#include <bsm/audit.h>
 #include <cassert>
+
+#include <filesystem>
 #include <glm/gtc/quaternion.hpp>
+#include <stdexcept>
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
 
-#include "tiny_gltf_v3.h"
+#include <fastgltf/core.hpp>
+#include <fastgltf/types.hpp>
+#include <fastgltf/tools.hpp>
+#include <fastgltf/glm_element_traits.hpp>
 
 #include "model.hpp"
+#include "VulkanInterface.hpp"
 
 class Scene {
     public:
-        Scene(const std::string& filename) {
-            tg3_parse_options opts;
-            tg3_error_stack errors;
-            tg3_model model;
+        Scene(const std::string& filename, VulkanInterface& renderer) {
+            static fastgltf::Parser parser {};
 
-            tg3_parse_options_init(&opts);
-            tg3_error_stack_init(&errors);
+            std::filesystem::path path {std::string{SCENE_PATH} + "/" + filename};
 
-            std::string path {std::string(SHADER_PATH) + '/' + filename};
-            tg3_error_code err = tg3_parse_file(&model, &errors, path.c_str(), path.length(), &opts);
-            if (err != TG3_OK) {
-                for (uint32_t i = 0; i < errors.count; i++) {
-                    fprintf(stderr, "[%d] %s\n", (int)errors.entries[i].severity,
-                            errors.entries[i].message ? errors.entries[i].message : "(null)");
-                }
-            }
+            auto data {fastgltf::GltfDataBuffer::FromPath(path)};
+            if (data.error() != fastgltf::Error::None) {throw std::runtime_error("Failed to open gltf file!");}
 
-            tg3_model_free(&model);
-            tg3_error_stack_free(&errors);
+            auto asset {parser.loadGltf(data.get(), path.parent_path(), fastgltf::Options::LoadExternalBuffers | fastgltf::Options::LoadExternalImages)};
+            if(asset.error() != fastgltf::Error::None) {throw std::runtime_error("Failed to parse gltf file!");}
+
+            renderer.loadScene(asset.get()); // load textures and models onto GPU memory
         }
     private:
-        const std::vector<Model> m_models {};
         std::vector<ModelInstance> m_modelInstances {};
 };
 

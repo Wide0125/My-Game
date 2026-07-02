@@ -1,12 +1,7 @@
-#if defined(__INTELLISENSE__) || !defined(USE_CPP20_MODULES)
-#include <vulkan/vulkan_raii.hpp>
-#else
-import vulkan_hpp;
-#endif
-
+#define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#define GLM_ENABLE_EXPERIMENTAL
 #define TINYGLTF_IMPLEMENTATION
-#define STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_WRITE_IMPLEMENTATION
 
 #include "VulkanInterface.hpp"
 #include "scene.hpp"
@@ -14,6 +9,6 @@ import vulkan_hpp;
 
 int main() {
     VulkanInterface renderer {};
-    std::unique_ptr<Scene> currentScene {std::make_unique<Scene>("Scene1.gltf")};
+    std::unique_ptr<Scene> currentScene {std::make_unique<Scene>("Scene1.glb", renderer)};
     return 0;
 }

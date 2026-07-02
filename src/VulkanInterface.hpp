@@ -1,6 +1,8 @@
 #ifndef VULKANINTERFACE_HPP
 #define VULKANINTERFACE_HPP
 
+#include "fastgltf/types.hpp"
+#include "vertex.hpp"
 #include "vulkan/vulkan.hpp"
 #include <cstdint>
 #include <vector>
@@ -18,6 +20,8 @@ import vulkan_hpp;
 class VulkanInterface {
     public:
         VulkanInterface();
+        ~VulkanInterface();
+        void loadScene(const fastgltf::Asset& asset); // load gltf information onto GPU
     private:
         static constexpr int MAX_FRAMES_IN_FLIGHT {2};
 
@@ -56,19 +60,23 @@ class VulkanInterface {
         VmaAllocation m_depthImageAllocation {nullptr};
         vk::raii::ImageView m_depthImageView {nullptr};
 
+        std::vector<std::vector<Vertex>> m_meshVertices {}; // vector to temporarily hold vertices of models
+        std::vector<std::vector<uint32_t>> m_meshIndices {}; // vector to temporarily hold indices of models
         vk::raii::Buffer m_vertexBuffer {nullptr};
         vk::raii::DeviceMemory m_vertexBufferMemory {nullptr};
         vk::raii::Buffer m_indexBuffer {nullptr};
         vk::raii::DeviceMemory m_indexBufferMemory {nullptr};
 
-        void createBuffer(vk::DeviceSize, vk::BufferUsageFlags, vk::raii::Buffer&, VmaAllocation&) const;
-
-        std::vector<vk::raii::Buffer> m_uniformBuffers {};
-        std::vector<VmaAllocation> m_uniformBufferALlocations {};
-
         std::vector<vk::raii::Semaphore> m_presentCompleteSemaphores {};
         std::vector<vk::raii::Semaphore> m_renderFinishedSemaphores {};
         std::vector<vk::raii::Fence> m_inFlightFences {};
+        
+        std::vector<vk::raii::Image> m_textureImages {};
+        std::vector<VmaAllocation> m_textureImageAllocations {};
+        std::vector<vk::raii::ImageView> m_textureImageViews {};
+        std::vector<vk::raii::Sampler> m_textureSamplers {};
+
+        uint32_t mipLevels {};
 
 
         void initWindow(); // initialize GLFW window for Vulkan
@@ -106,10 +114,25 @@ class VulkanInterface {
         void createImage(uint32_t, uint32_t, uint32_t, vk::Format, vk::ImageTiling, vk::ImageUsageFlags, vk::raii::Image&, VmaAllocation&) const;
         [[nodiscard]] vk::raii::ImageView createImageView(const vk::raii::Image&, vk::Format, vk::ImageAspectFlags, uint32_t) const;
         void createDepthResources();
+        
+        void createBuffer(vk::DeviceSize, vk::BufferUsageFlags, vk::raii::Buffer&, VmaAllocation&) const;
 
         void createCommandBuffers();
 
         void createSyncObjects();
+
+
+        std::unique_ptr<vk::raii::CommandBuffer> beginSingleTimeCommands() const; // create and start a command buffer for commands to be executed only once
+        void endSingleTimeCommands(const vk::raii::CommandBuffer&) const; // end command buffer once commands have been recorded, then submit commands to queue
+        
+        void transitionImageLayout(const vk::raii::Image&, const vk::ImageLayout, const vk::ImageLayout, uint32_t) const;
+        void copyBufferToImage(const vk::raii::Buffer&, const vk::raii::Image&, uint32_t, uint32_t) const;
+        void generateMipmaps(vk::raii::Image&, vk::Format, int32_t, int32_t, uint32_t) const;
+        void createTextureImages(const fastgltf::Asset&);
+
+        void createTextureSamplers(const fastgltf::Asset&);
+
+        void loadModels(const fastgltf::Asset&);
 };
 
 #endif // !VULKANINTERFACE_HPP

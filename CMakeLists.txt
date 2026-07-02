@@ -16,12 +16,19 @@ endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
+if(WIN32)
+  set(glfw3_DIR "${CMAKE_CURRENT_SOURCE_DIR}/glfw3.4/lib/cmake")
+  list(APPEND CMAKE_PREFIX_PATH "${CMAKE_CURRENT_SOURCE_DIR}/glfw3.4/lib/cmake")
+endif()
+
 find_package(Vulkan 1.4.335 REQUIRED)
-list(APPEND CMAKE_PREFIX_PATH "${CMAKE_CURRENT_SOURCE_DIR}/glfw3.4/lib/cmake")
 find_package(glfw3 REQUIRED)
 find_package(glm REQUIRED)
-set(glfw3_DIR "${CMAKE_CURRENT_SOURCE_DIR}/glfw3.4/lib/cmake")
-find_package(tinygltf REQUIRED)
+find_package(fastgltf REQUIRED)
+find_package(vma REQUIRED)
+# find_package(ktx REQUIRED)
+find_package(stb REQUIRED)
+set(STB_INCLUDEDIR ${stb_INCLUDE_DIRS})
 
 if(ENABLE_CPP20_MODULE)
   add_library(VulkanCppModule)
@@ -74,9 +81,10 @@ endif()
 add_executable(${PROJECT_NAME} 
   src/main.cpp
   src/VulkanInterface.cpp
-  )
+)
 
-target_link_libraries (${PROJECT_NAME} Vulkan::cppm glfw glm::glm tinygltf)
+target_link_libraries (${PROJECT_NAME} Vulkan::cppm glfw glm::glm fastgltf VulkanMemoryAllocator)
+target_include_directories (${PROJECT_NAME} PRIVATE ${STB_INCLUDEDIR})
 
 find_program(SLANGC_EXECUTABLE slangc HINTS $ENV{VULKAN_SDK}/bin REQUIRED)
 # Slang shader
