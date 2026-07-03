@@ -146,7 +146,9 @@ void VulkanInterface::createTextureImages(const fastgltf::Asset& asset) {
 
 		m_textureImages.push_back(std::move(imageTemp));
 		m_textureImageAllocations.push_back(std::move(imageAllocationTemp));
-		m_textureImageViews.push_back(std::move(imageViewTemp));
+		m_textureImageViews.push_back(
+			std::move(imageViewTemp)
+		); // TODO rewrite texture loader entirely to support ktx compressed textures
 	}
 }
 void VulkanInterface::createTextureSamplers(const fastgltf::Asset& asset) {
