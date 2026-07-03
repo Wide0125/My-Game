@@ -4,7 +4,11 @@
     "version": "2.0"
   },
   "extensionsUsed": [
-    "KHR_materials_specular"
+    "KHR_materials_specular",
+    "KHR_texture_basisu"
+  ],
+  "extensionsRequired": [
+    "KHR_texture_basisu"
   ],
   "scene": 0,
   "scenes": [
@@ -19,7 +23,7 @@
   "nodes": [
     {
       "mesh": 0,
-      "name": "Cube"
+      "name": "Cube.001"
     },
     {
       "mesh": 1,
@@ -34,7 +38,7 @@
   "materials": [
     {
       "doubleSided": true,
-      "name": "Material",
+      "name": "Material.001",
       "pbrMetallicRoughness": {
         "baseColorTexture": {
           "index": 0
@@ -61,7 +65,7 @@
   ],
   "meshes": [
     {
-      "name": "Cube",
+      "name": "Cube.001",
       "primitives": [
         {
           "attributes": {
@@ -91,22 +95,30 @@
   ],
   "textures": [
     {
-      "sampler": 0,
-      "source": 0
+      "extensions": {
+        "KHR_texture_basisu": {
+          "source": 0
+        }
+      },
+      "sampler": 0
     },
     {
-      "sampler": 0,
-      "source": 1
+      "extensions": {
+        "KHR_texture_basisu": {
+          "source": 1
+        }
+      },
+      "sampler": 0
     }
   ],
   "images": [
     {
-      "name": "Idiots Logo",
-      "uri": "Scene1_img0.png"
+      "name": "Scene1_img0",
+      "uri": "Scene1_img0.ktx2"
     },
     {
-      "name": "viking_room",
-      "uri": "Scene1_img1.png"
+      "name": "Scene1_img1",
+      "uri": "Scene1_img1.ktx2"
     }
   ],
   "accessors": [
@@ -147,7 +159,7 @@
     {
       "bufferView": 4,
       "componentType": 5126,
-      "count": 4677,
+      "count": 4887,
       "max": [
         0.7419049739837646,
         0.9248819947242737,
@@ -163,13 +175,13 @@
     {
       "bufferView": 5,
       "componentType": 5126,
-      "count": 4677,
+      "count": 4887,
       "type": "VEC3"
     },
     {
       "bufferView": 6,
       "componentType": 5126,
-      "count": 4677,
+      "count": 4887,
       "type": "VEC2"
     },
     {
@@ -206,26 +218,26 @@
     },
     {
       "buffer": 0,
-      "byteLength": 56124,
+      "byteLength": 58644,
       "byteOffset": 840,
       "target": 34962
     },
     {
       "buffer": 0,
-      "byteLength": 56124,
-      "byteOffset": 56964,
+      "byteLength": 58644,
+      "byteOffset": 59484,
       "target": 34962
     },
     {
       "buffer": 0,
-      "byteLength": 37416,
-      "byteOffset": 113088,
+      "byteLength": 39096,
+      "byteOffset": 118128,
       "target": 34962
     },
     {
       "buffer": 0,
       "byteLength": 22968,
-      "byteOffset": 150504,
+      "byteOffset": 157224,
       "target": 34963
     }
   ],
@@ -238,7 +250,7 @@
   "buffers": [
     {
       "uri": "Scene1_data.bin",
-      "byteLength": 173472
+      "byteLength": 180192
     }
   ]
 }

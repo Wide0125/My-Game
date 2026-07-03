@@ -5,6 +5,7 @@
 #include <cassert>
 
 #include <filesystem>
+#include <format>
 #include <glm/gtc/quaternion.hpp>
 #include <stdexcept>
 #define GLM_ENABLE_EXPERIMENTAL
@@ -21,7 +22,7 @@
 class Scene {
     public:
         Scene(const std::string& filename, VulkanInterface& renderer) {
-            static fastgltf::Parser parser {};
+            static fastgltf::Parser parser {fastgltf::Extensions::KHR_texture_basisu};
 
             std::filesystem::path path {std::string{SCENE_PATH} + "/" + filename};
 
@@ -29,7 +30,7 @@ class Scene {
             if (data.error() != fastgltf::Error::None) {throw std::runtime_error("Failed to open gltf file!");}
 
             auto asset {parser.loadGltf(data.get(), path.parent_path(), fastgltf::Options::LoadExternalBuffers | fastgltf::Options::LoadExternalImages)};
-            if(asset.error() != fastgltf::Error::None) {throw std::runtime_error("Failed to parse gltf file!");}
+            if(asset.error() != fastgltf::Error::None) {throw std::runtime_error(std::format("Failed to parse gltf file: {}", fastgltf::getErrorMessage(asset.error())));}
 
             renderer.loadScene(asset.get()); // load textures and models onto GPU memory
         }

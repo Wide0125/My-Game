@@ -26,9 +26,7 @@ find_package(glfw3 REQUIRED)
 find_package(glm REQUIRED)
 find_package(fastgltf REQUIRED)
 find_package(vma REQUIRED)
-# find_package(ktx REQUIRED)
-find_package(stb REQUIRED)
-set(STB_INCLUDEDIR ${stb_INCLUDE_DIRS})
+find_package(KTX REQUIRED)
 
 if(ENABLE_CPP20_MODULE)
   add_library(VulkanCppModule)
@@ -83,8 +81,7 @@ add_executable(${PROJECT_NAME}
   src/VulkanInterface.cpp
 )
 
-target_link_libraries (${PROJECT_NAME} Vulkan::cppm glfw glm::glm fastgltf VulkanMemoryAllocator)
-target_include_directories (${PROJECT_NAME} PRIVATE ${STB_INCLUDEDIR})
+target_link_libraries (${PROJECT_NAME} Vulkan::cppm glfw glm::glm fastgltf VulkanMemoryAllocator KTX::ktx)
 
 find_program(SLANGC_EXECUTABLE slangc HINTS $ENV{VULKAN_SDK}/bin REQUIRED)
 # Slang shader
