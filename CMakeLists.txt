@@ -78,8 +78,10 @@ endif()
 
 add_executable(${PROJECT_NAME} 
   src/main.cpp
-  src/VulkanInterface.cpp
-)
+  src/VulkanInterfaceInit.cpp
+  src/VulkanInterfaceLoadScene.cpp
+  src/VulkanInterfaceHelpers.cpp
+  )
 
 target_link_libraries (${PROJECT_NAME} Vulkan::cppm glfw glm::glm fastgltf VulkanMemoryAllocator KTX::ktx)
 

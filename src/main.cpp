@@ -3,6 +3,8 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #define TINYGLTF_IMPLEMENTATION
 
+#define VMA_IMPLEMENTATION
+
 #include "VulkanInterface.hpp"
 #include "scene.hpp"
 

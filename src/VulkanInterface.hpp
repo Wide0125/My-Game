@@ -1,9 +1,6 @@
 #ifndef VULKANINTERFACE_HPP
 #define VULKANINTERFACE_HPP
 
-#include "fastgltf/types.hpp"
-#include "vertex.hpp"
-#include "vulkan/vulkan.hpp"
 #include <cstdint>
 #include <vector>
 #if defined(__INTELLISENSE__) || !defined(USE_CPP20_MODULES)
@@ -17,10 +14,19 @@ import vulkan_hpp;
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#include "fastgltf/types.hpp"
+#include "vertex.hpp"
+
+struct UniformBufferObject {
+	alignas(16) glm::mat4 model;
+	alignas(16) glm::mat4 view;
+	alignas(16) glm::mat4 proj;
+};
+
 class VulkanInterface {
   public:
 	VulkanInterface();
-	~VulkanInterface();
+	~VulkanInterface() {cleanup();}
 	void loadScene(const fastgltf::Asset& asset); // load gltf information onto GPU
 
 	void waitIdle() { m_device.waitIdle(); }
@@ -85,7 +91,10 @@ class VulkanInterface {
 
 	void initWindow(); // initialize GLFW window for Vulkan
 	void initVulkan(); // initialize Vulkan
-	void cleanup();
+	void cleanup() {
+		glfwDestroyWindow(m_window);
+		glfwTerminate();
+	}
 
 	void createInstance(); // initialize Vulkan
 	void createSurface();  // create surface for Vulkan to draw on, linked to

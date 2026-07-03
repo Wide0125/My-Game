@@ -1,7 +1,6 @@
 #ifndef SCENE_HPP
 #define SCENE_HPP
 
-#include <bsm/audit.h>
 #include <cassert>
 
 #include <filesystem>
@@ -32,7 +31,7 @@ class Scene {
             auto asset {parser.loadGltf(data.get(), path.parent_path(), fastgltf::Options::LoadExternalBuffers | fastgltf::Options::LoadExternalImages)};
             if(asset.error() != fastgltf::Error::None) {throw std::runtime_error(std::format("Failed to parse gltf file: {}", fastgltf::getErrorMessage(asset.error())));}
 
-            renderer.loadScene(asset.get()); // load textures and models onto GPU memory
+			renderer.loadScene(asset.get()); // load textures and models onto GPU memory
         }
     private:
         std::vector<ModelInstance> m_modelInstances {};
