@@ -126,7 +126,7 @@ void VulkanInterface::createTextureImages(const fastgltf::Asset& asset) {
 		m_textureImageMemories.emplace_back(m_device, vkTexture.deviceMemory);
 		m_textureImageViews.push_back(
 			std::move(createImageView(
-				{m_device, vkTexture.image},
+				vkTexture.image,
 				static_cast<vk::Format>(vkTexture.imageFormat),
 				vk::ImageAspectFlagBits::eColor,
 				vkTexture.levelCount

@@ -173,7 +173,7 @@ void VulkanInterface::createImage(
 	image = {m_device, imageTemp};
 }
 [[nodiscard]] vk::raii::ImageView VulkanInterface::createImageView(
-	const vk::raii::Image& image,
+	const vk::Image& image,
 	vk::Format format,
 	vk::ImageAspectFlags aspectFlags,
 	uint32_t mipLevels

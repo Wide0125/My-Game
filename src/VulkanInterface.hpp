@@ -135,7 +135,7 @@ class VulkanInterface {
 		VmaAllocation&
 	) const;
 	[[nodiscard]] vk::raii::ImageView
-	createImageView(const vk::raii::Image&, vk::Format, vk::ImageAspectFlags, uint32_t) const;
+	createImageView(const vk::Image&, vk::Format, vk::ImageAspectFlags, uint32_t) const;
 	void createDepthResources();
 
 	void createBuffer(
