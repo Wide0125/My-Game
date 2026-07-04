@@ -9,6 +9,7 @@
 #include <glm/gtx/hash.hpp>
 
 #include <ktx.h>
+#include <ktxvulkan.h>
 
 #include <fastgltf/types.hpp>
 #include <fastgltf/util.hpp>
@@ -23,16 +24,15 @@ void VulkanInterface::loadScene(const fastgltf::Asset& asset) {
 
 void VulkanInterface::createTextureImages(const fastgltf::Asset& asset) {
 	m_textureImages.clear();
-	m_textureImageAllocations.clear();
+	m_textureImageMemories.clear();
 	m_textureImageViews.clear();
 
 	m_textureImages.reserve(asset.images.size());
-	m_textureImageAllocations.reserve(asset.images.size());
+	m_textureImageMemories.reserve(asset.images.size());
 	m_textureImageViews.reserve(asset.images.size());
 	for (const auto& image: asset.images) {
-		int texChannels {};
 
-		ktxTexture* kTexture {};
+		ktxTexture2* kTexture {};
 		KTX_error_code result {KTX_FILE_OPEN_FAILED};
 
 		std::visit(
@@ -45,10 +45,13 @@ void VulkanInterface::createTextureImages(const fastgltf::Asset& asset) {
 					);
 					assert(filePath.fileByteOffset == 0);
 					assert(filePath.uri.isLocalPath());
+					assert(
+						filePath.mimeType == fastgltf::MimeType::KTX2 and "Texture is not KTX2!"
+					);
 					const std::string path {
 						std::string {SCENE_PATH} + "/" + std::string {filePath.uri.path()}
 					};
-					result = ktxTexture_CreateFromNamedFile(
+					result = ktxTexture2_CreateFromNamedFile(
 						path.c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &kTexture
 					);
 				},
@@ -57,7 +60,8 @@ void VulkanInterface::createTextureImages(const fastgltf::Asset& asset) {
 						"Loading image directly from "
 						"memory..."
 					);
-					result = ktxTexture_CreateFromMemory(
+					assert(vector.mimeType == fastgltf::MimeType::KTX2 and "Texture is not KTX2!");
+					result = ktxTexture2_CreateFromMemory(
 						reinterpret_cast<const ktx_uint8_t*>(vector.bytes.data()),
 						static_cast<ktx_size_t>(vector.bytes.size()),
 						KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT,
@@ -69,13 +73,17 @@ void VulkanInterface::createTextureImages(const fastgltf::Asset& asset) {
 						"Loading image from buffer through "
 						"a bufferView..."
 					);
+					assert(
+						bufferViewSource.mimeType == fastgltf::MimeType::KTX2 and
+						"Texture is not KTX2!"
+					);
 					auto& bufferView = asset.bufferViews[bufferViewSource.bufferViewIndex];
 					auto& buffer = asset.buffers[bufferView.bufferIndex];
 					std::visit(
 						fastgltf::visitor {
 							[](auto& arg) {},
 							[&](const fastgltf::sources::Array& array) {
-								result = ktxTexture_CreateFromMemory(
+								result = ktxTexture2_CreateFromMemory(
 									reinterpret_cast<const ktx_uint8_t*>(
 										array.bytes.data() + bufferView.byteOffset
 									),
@@ -90,65 +98,41 @@ void VulkanInterface::createTextureImages(const fastgltf::Asset& asset) {
 				}
 			},
 			image.data
-		); // load image
+		); // load image into kTexture
 		if (result != KTX_SUCCESS) {
 			throw std::runtime_error("Failed to load texture image!");
 		}
-		uint32_t texWidth {kTexture->baseWidth};
-		uint32_t texHeight {kTexture->baseHeight};
-		ktx_size_t imageSize {ktxTexture_GetDataSize(kTexture)};
-		mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
+		if (kTexture->isCompressed and ktxTexture2_NeedsTranscoding(kTexture)) {
+			ktx_transcode_fmt_e transcodeFmt = KTX_TTF_BC7_RGBA;
 
-		vk::raii::Buffer stagingBuffer {nullptr};
-		VmaAllocation stagingAllocation {};
-		createBuffer(
-			imageSize,
-			vk::BufferUsageFlagBits::eTransferSrc,
-			VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
-			stagingBuffer,
-			stagingAllocation
-		);
-
-		void* stagingData {};
-		if (vmaMapMemory(m_allocator, stagingAllocation, &stagingData) != VK_SUCCESS) {
-			throw std::runtime_error("Failed to map memory for textures!");
+			result = ktxTexture2_TranscodeBasis(kTexture, transcodeFmt, 0);
+			if (result != KTX_SUCCESS) {
+				throw std::runtime_error(
+					std::format("Failed to transcode KTX2 texture: {}", ktxErrorString(result))
+				);
+			}
 		}
-		memcpy(stagingData, ktxTexture_GetData(kTexture), imageSize);
-		vmaUnmapMemory(m_allocator, stagingAllocation);
+		ktxVulkanTexture vkTexture {};
+		ktxVulkanDeviceInfo* ktxVkDeviceInfo {
+			ktxVulkanDeviceInfo_Create(*m_physicalDevice, *m_device, *m_queue, *m_commandPool, NULL)
+		};
+		result = ktxTexture2_VkUpload(kTexture, ktxVkDeviceInfo, &vkTexture);
+		if (result != KTX_SUCCESS) {
+			throw std::runtime_error("Failed to upload texture!");
+		}
+		ktxTexture2_Destroy(kTexture);
 
-		ktxTexture_Destroy(kTexture);
-
-		vk::raii::Image imageTemp {nullptr};
-		VmaAllocation imageAllocationTemp {};
-		createImage(
-			texWidth,
-			texHeight,
-			mipLevels,
-			vk::Format::eR8G8B8A8Srgb,
-			vk::ImageTiling::eOptimal,
-			vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst |
-				vk::ImageUsageFlagBits::eSampled,
-			imageTemp,
-			imageAllocationTemp
-		);
-
-		transitionImageLayout(
-			imageTemp, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, mipLevels
-		);
-		copyBufferToImage(stagingBuffer, imageTemp, texWidth, texHeight);
-		// vmaDestroyBuffer(m_allocator, *stagingBuffer, stagingAllocation);
-
-		generateMipmaps(imageTemp, vk::Format::eR8G8B8A8Srgb, texWidth, texHeight, mipLevels);
-
-		auto imageViewTemp {createImageView(
-			imageTemp, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor, mipLevels
-		)};
-
-		m_textureImages.push_back(std::move(imageTemp));
-		m_textureImageAllocations.push_back(std::move(imageAllocationTemp));
+		m_textureImages.emplace_back(m_device, vkTexture.image);
+		m_textureImageMemories.emplace_back(m_device, vkTexture.deviceMemory);
 		m_textureImageViews.push_back(
-			std::move(imageViewTemp)
-		); // TODO rewrite texture loader entirely to support ktx compressed textures
+			std::move(createImageView(
+				{m_device, vkTexture.image},
+				static_cast<vk::Format>(vkTexture.imageFormat),
+				vk::ImageAspectFlagBits::eColor,
+				vkTexture.levelCount
+			))
+		);
+		vkTexture.image = nullptr;
 	}
 }
 void VulkanInterface::createTextureSamplers(const fastgltf::Asset& asset) {
@@ -234,5 +218,6 @@ void VulkanInterface::createTextureSamplers(const fastgltf::Asset& asset) {
 
 void VulkanInterface::loadModels(const fastgltf::Asset& asset) {
 	for (const auto& mesh: asset.meshes) {
+		// TODO continue with gltf loading
 	}
 }
