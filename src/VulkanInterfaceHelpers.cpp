@@ -173,10 +173,7 @@ void VulkanInterface::createImage(
 	image = {m_device, imageTemp};
 }
 [[nodiscard]] vk::raii::ImageView VulkanInterface::createImageView(
-	const vk::Image& image,
-	vk::Format format,
-	vk::ImageAspectFlags aspectFlags,
-	uint32_t mipLevels
+	const vk::Image& image, vk::Format format, vk::ImageAspectFlags aspectFlags, uint32_t mipLevels
 ) const {
 	vk::ImageViewCreateInfo viewInfo {
 		.image = image,
@@ -281,3 +278,24 @@ void VulkanInterface::transitionImageLayout(
 	commandBuffer->pipelineBarrier(sourceStage, destinationStage, {}, {}, nullptr, barrier);
 	endSingleTimeCommands(*commandBuffer);
 } // currently unused, staged for deletion
+
+void VulkanInterface::copyBuffer(
+	vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuffer, vk::DeviceSize size
+) const {
+	vk::CommandBufferAllocateInfo allocInfo {
+		.commandPool = m_commandPool,
+		.level = vk::CommandBufferLevel::ePrimary,
+		.commandBufferCount = 1
+	};
+	vk::raii::CommandBuffer commandCopyBuffer =
+		std::move(m_device.allocateCommandBuffers(allocInfo).front());
+	commandCopyBuffer.begin(
+		vk::CommandBufferBeginInfo {.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit}
+	);
+	commandCopyBuffer.copyBuffer(*srcBuffer, *dstBuffer, vk::BufferCopy {.size = size});
+	commandCopyBuffer.end();
+	m_queue.submit(
+		vk::SubmitInfo {.commandBufferCount = 1, .pCommandBuffers = &*commandCopyBuffer}, nullptr
+	);
+	m_queue.waitIdle();
+}

@@ -5,6 +5,8 @@
 
 #define VMA_IMPLEMENTATION
 
+#define GLFW_INCLUDE_VULKAN
+
 #include "VulkanInterface.hpp"
 #include "scene.hpp"
 

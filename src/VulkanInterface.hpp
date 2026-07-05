@@ -11,11 +11,11 @@ import vulkan_hpp;
 
 #include "vk_mem_alloc.h"
 
-#define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#include <glm/glm.hpp>
+
 #include "fastgltf/types.hpp"
-#include "vertex.hpp"
 
 struct UniformBufferObject {
 	alignas(16) glm::mat4 model;
@@ -69,10 +69,33 @@ class VulkanInterface {
 	VmaAllocation m_depthImageAllocation {nullptr};
 	vk::raii::ImageView m_depthImageView {nullptr};
 
-	vk::raii::Buffer m_vertexBuffer {nullptr};
-	vk::raii::DeviceMemory m_vertexBufferMemory {nullptr};
-	vk::raii::Buffer m_indexBuffer {nullptr};
-	vk::raii::DeviceMemory m_indexBufferMemory {nullptr};
+	struct MeshBuffers {
+		vk::raii::Buffer vertexBuffer {nullptr};
+		VmaAllocation vertexAllocation {};
+
+		std::vector<vk::raii::Buffer> indexBuffers {};
+		std::vector<VmaAllocation> indexAllocations {};
+
+		// std::vector<Material> materials {};
+		// TODO: Implement materials
+	};
+
+	std::vector<MeshBuffers> m_meshes {};
+	void destroyMeshes() {
+		for (auto& meshBuffers: m_meshes) {
+			vmaDestroyBuffer(
+				m_allocator, meshBuffers.vertexBuffer.release(), meshBuffers.vertexAllocation
+			);
+			for (size_t i {0}; i < meshBuffers.indexBuffers.size(); ++i) {
+				vmaDestroyBuffer(
+					m_allocator,
+					meshBuffers.indexBuffers[i].release(),
+					meshBuffers.indexAllocations[i]
+				);
+			}
+		}
+		m_meshes.clear();
+	}
 
 	std::vector<vk::raii::Semaphore> m_presentCompleteSemaphores {};
 	std::vector<vk::raii::Semaphore> m_renderFinishedSemaphores {};
@@ -88,6 +111,7 @@ class VulkanInterface {
 	void cleanup() {
 		m_textureImages.clear();
 		vmaDestroyImage(m_allocator, m_depthImage.release(), m_depthImageAllocation);
+		destroyMeshes();
 		vmaDestroyAllocator(m_allocator);
 		glfwDestroyWindow(m_window);
 		glfwTerminate();
@@ -168,6 +192,8 @@ class VulkanInterface {
 
 	void createTextureSamplers(const fastgltf::Asset&);
 
+	void
+	copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuffer, vk::DeviceSize size) const;
 	void loadModels(const fastgltf::Asset&);
 };
 
