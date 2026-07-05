@@ -231,7 +231,7 @@ void VulkanInterface::loadModels(const fastgltf::Asset& asset) {
 				asset.accessors[primitive.findAttribute("POSITION")->accessorIndex].count;
 			hasIndicesCount += primitive.indicesAccessor.has_value() ? 1 : 0;
 		}
-		std::vector<glm::vec3> positions(positionsCount); // load vertices
+		std::vector<glm::vec3> positions(positionsCount);
 		std::vector<glm::vec3> normals(positionsCount);
 		std::vector<glm::vec3> colors(positionsCount);
 		std::vector<glm::vec2> texCoords(positionsCount);
@@ -242,7 +242,7 @@ void VulkanInterface::loadModels(const fastgltf::Asset& asset) {
 		indexBufferAllocations.reserve(hasIndicesCount);
 		size_t offset {0};
 		for (const auto& primitive: mesh.primitives) {
-			const auto& positionAccessor { // load positions
+			const auto& positionAccessor { // load vertices
 				asset.accessors[primitive.findAttribute("POSITION")->accessorIndex]
 			};
 			fastgltf::copyFromAccessor<glm::vec3>(
@@ -288,7 +288,7 @@ void VulkanInterface::loadModels(const fastgltf::Asset& asset) {
 				);
 			}
 
-			std::vector<uint32_t> indices {};
+			std::vector<uint32_t> indices {}; // load indices
 			if (primitive.indicesAccessor.has_value()) {
 				const auto& indicesAccessor {asset.accessors[primitive.indicesAccessor.value()]};
 				indices.resize(indicesAccessor.count);

@@ -18,7 +18,7 @@ BreakAfterOpenBracketFunction: true
 BreakBeforeCloseBracketFunction: true
 BreakAfterOpenBracketIf: true
 BreakAfterOpenBracketSwitch: true
-BreakBeforeBraces: Custom
+BreakBeforeBraces: Attach
 SpaceBeforeAssignmentOperators: true
 SpaceBeforeCaseColon: false
 SpaceBeforeParens: ControlStatements
