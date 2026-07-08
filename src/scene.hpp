@@ -17,6 +17,7 @@
 
 #include "ModelInstance.hpp"
 #include "VulkanInterface.hpp"
+#include "Camera.hpp"
 
 class Scene {
   public:
@@ -46,23 +47,22 @@ class Scene {
 
 		renderer.loadScene(asset.get(), this); // load textures and models onto GPU memory
 
-		m_modelInstances.reserve(asset->nodes.size());
+		m_modelInstances.reserve(renderer.getModelInstanceCount());
 		for (const auto& node: asset->nodes) {
 			getNode(node, renderer);
 		}
 		m_parentModelInstances.reserve(asset->scenes[0].nodeIndices.size());
 		for (const auto& parentNodeIndex: asset->scenes[0].nodeIndices) {
 			m_parentModelInstances.push_back(&m_modelInstances[parentNodeIndex]);
-        }
+		}
 	}
 
 	const std::vector<const ModelInstance*>& getParentNodes() const {
 		return m_parentModelInstances;
 	}
-	const std::vector<ModelInstance>& getNodes() const {
-		return m_modelInstances;
-	}
+	const std::vector<ModelInstance>& getNodes() const { return m_modelInstances; }
 
+	Camera sceneCamera {};
   private:
 	std::vector<const ModelInstance*> m_parentModelInstances {};
 	std::vector<ModelInstance> m_modelInstances {};
@@ -74,14 +74,15 @@ class Scene {
 		glm::vec3 scale {TRS.scale.x(), TRS.scale.y(), TRS.scale.z()};
 		std::vector<size_t> childIndices {node.children.begin(), node.children.end()};
 
-		m_modelInstances.push_back(
-			{node.meshIndex.has_value() ? &renderer.getMeshBuffers(node.meshIndex.value())
-										: nullptr,
-			 translation,
-			 rotation,
-			 scale,
-			 childIndices}
-		);
+		if (node.meshIndex.has_value()) {
+			m_modelInstances.push_back(
+				{&renderer.getMeshBuffers(node.meshIndex.value()),
+				 translation,
+				 rotation,
+				 scale,
+				 childIndices}
+			);
+		}
 	}
 };
 

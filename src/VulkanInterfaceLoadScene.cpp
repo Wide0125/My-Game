@@ -21,12 +21,12 @@
 #include "Vertex.hpp"
 #include "VulkanInterface.hpp"
 
-void VulkanInterface::loadScene(const fastgltf::Asset& asset, const Scene* scene) {
+void VulkanInterface::loadScene(const fastgltf::Asset& asset, Scene* scene) {
 	m_currentScene = scene;
 	createTextureImages(asset);
 	createTextureSamplers(asset);
 	loadModels(asset);
-	createUniformBuffers();
+	createUniformBuffers(asset);
 	createDescriptorSets(asset);
 	createGraphicsPipeline();
 }
@@ -384,28 +384,45 @@ void VulkanInterface::loadModels(const fastgltf::Asset& asset) {
 	}
 }
 
-void VulkanInterface::createUniformBuffers() {
-	for (size_t i {0}; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-		vk::DeviceSize bufferSize {sizeof(UniformBufferObject)};
-		vk::raii::Buffer mvpBuffer {nullptr};
-		VmaAllocation mvpAllocation {};
+void VulkanInterface::createUniformBuffers(const fastgltf::Asset& asset) {
+	int nodeCount {0};
+	for (const auto& node: asset.nodes) {
+		if (node.meshIndex.has_value()) {
+			++nodeCount;
+		}
+	}
+	for (size_t frameInFlight {0}; frameInFlight < MAX_FRAMES_IN_FLIGHT; ++frameInFlight) {
+		std::vector<vk::raii::Buffer> mvpBuffers {};
+		std::vector<VmaAllocation> mvpAllocations {};
 
-		createBuffer(
-			bufferSize,
-			vk::BufferUsageFlagBits::eUniformBuffer,
-			VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
-			mvpBuffer,
-			mvpAllocation
-		);
-		m_mvpBuffers.emplace_back(std::move(mvpBuffer));
-		m_mvpAllocations.emplace_back(std::move(mvpAllocation));
+		mvpBuffers.reserve(nodeCount);
+		mvpAllocations.reserve(nodeCount);
+		for (size_t nodeIndex {0}; nodeIndex < nodeCount; ++nodeIndex) {
+			vk::DeviceSize bufferSize {sizeof(UniformBufferObject)};
+			vk::raii::Buffer mvpBuffer {nullptr};
+			VmaAllocation mvpAllocation {};
+
+			createBuffer(
+				bufferSize,
+				vk::BufferUsageFlagBits::eUniformBuffer,
+				VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+				mvpBuffer,
+				mvpAllocation
+			);
+
+			mvpBuffers.push_back(std::move(mvpBuffer));
+			mvpAllocations.push_back(mvpAllocation);
+		}
+		m_mvpBuffers[frameInFlight] = std::move(mvpBuffers);
+		m_mvpAllocations[frameInFlight] = std::move(mvpAllocations);
 	}
 }
 
 void VulkanInterface::createDescriptorSets(const fastgltf::Asset& asset) {
+	uint32_t nodeCount {static_cast<uint32_t>(m_mvpBuffers[0].size())};
 	uint32_t textureCount {static_cast<uint32_t>(asset.textures.size())};
-	createDescriptorPool();
-	m_descriptorSetLayout = createDescriptorSetLayout();
+	createDescriptorPool(nodeCount, textureCount);
+	m_descriptorSetLayout = createDescriptorSetLayout(nodeCount, textureCount);
 	std::vector<vk::DescriptorSetLayout> layouts {MAX_FRAMES_IN_FLIGHT, m_descriptorSetLayout};
 	vk::DescriptorSetAllocateInfo allocInfo {
 		.descriptorPool = m_descriptorPool,
@@ -415,12 +432,18 @@ void VulkanInterface::createDescriptorSets(const fastgltf::Asset& asset) {
 	m_descriptorSets = m_device.allocateDescriptorSets(allocInfo);
 
 	for (size_t frameIndex {0}; frameIndex < MAX_FRAMES_IN_FLIGHT; ++frameIndex) {
-		vk::DescriptorBufferInfo bufferInfo {
-			.buffer = m_mvpBuffers[frameIndex], .offset = 0, .range = sizeof(UniformBufferObject)
+		std::vector<vk::DescriptorBufferInfo> bufferInfos {
+			// .buffer = m_mvpBuffers[frameIndex], .offset = 0, .range = sizeof(UniformBufferObject)
 		};
+		bufferInfos.reserve(nodeCount);
+		for (int nodeIndex {0}; nodeIndex < nodeCount; ++nodeIndex) {
+			bufferInfos.emplace_back(
+				m_mvpBuffers[frameIndex][nodeIndex], 0, sizeof(UniformBufferObject)
+			);
+		}
 
 		std::vector<vk::DescriptorImageInfo> imageInfos {};
-		assert(textureCount <= MAX_TEXTURES);
+		// assert(textureCount <= MAX_TEXTURES);
 		imageInfos.reserve(textureCount);
 		for (const auto& texture: asset.textures) {
 			imageInfos.push_back(
@@ -432,10 +455,9 @@ void VulkanInterface::createDescriptorSets(const fastgltf::Asset& asset) {
 		std::vector<vk::WriteDescriptorSet> descriptorWrites {
 			{.dstSet = m_descriptorSets[frameIndex],
 			 .dstBinding = 0,
-			 .dstArrayElement = 0,
-			 .descriptorCount = 1,
+			 .descriptorCount = nodeCount,
 			 .descriptorType = vk::DescriptorType::eUniformBuffer,
-			 .pBufferInfo = &bufferInfo},
+			 .pBufferInfo = bufferInfos.data()},
 			{.dstSet = m_descriptorSets[frameIndex],
 			 .dstBinding = 1,
 			 .descriptorCount = textureCount,
@@ -515,7 +537,9 @@ void VulkanInterface::createGraphicsPipeline() {
 	};
 
 	vk::PushConstantRange pushConstantRange {
-		.stageFlags = vk::ShaderStageFlagBits::eFragment, .offset = 0, .size = sizeof(PushConstants)
+		.stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+		.offset = 0,
+		.size = sizeof(PushConstants)
 	};
 
 	vk::PipelineLayoutCreateInfo pipelineLayoutInfo {

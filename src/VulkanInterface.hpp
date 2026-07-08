@@ -29,6 +29,7 @@ struct UniformBufferObject {
 };
 
 struct PushConstants {
+	uint32_t matrixIndex;
 	uint32_t textureIndex;
 };
 
@@ -37,23 +38,23 @@ class VulkanInterface {
 	VulkanInterface();
 	~VulkanInterface() { cleanup(); }
 	void
-	loadScene(const fastgltf::Asset& asset, const Scene* scene); // load gltf information onto GPU
+	loadScene(const fastgltf::Asset& asset, Scene* scene); // load gltf information onto GPU
 
 	void waitIdle() { m_device.waitIdle(); }
 
 	const MeshBuffers& getMeshBuffers(size_t index) const { return m_meshes[index]; }
 
-	void run() {
-		while (!glfwWindowShouldClose(m_window)) {
-			glfwPollEvents();
-			drawFrame();
-		}
+	void drawFrame();
 
-		m_device.waitIdle();
+	GLFWwindow* const getWindow() const { return m_window; }
+
+	int getModelInstanceCount() const {
+		assert(m_currentScene != nullptr);
+		return m_mvpBuffers[0].size();
 	}
+
   private:
 	static constexpr int MAX_FRAMES_IN_FLIGHT {2};
-	static constexpr int MAX_TEXTURES {1000};
 
 	static constexpr int WIDTH {800};
 	static constexpr int HEIGHT {600};
@@ -63,7 +64,7 @@ class VulkanInterface {
 	vk::raii::Context m_context {};
 	vk::raii::Instance m_instance {nullptr}; // Vulkan instance
 
-	const Scene* m_currentScene;
+	Scene* m_currentScene {nullptr};
 
 	vk::raii::SurfaceKHR m_surface {nullptr}; // surface for Vulkan to draw onto
 
@@ -117,8 +118,8 @@ class VulkanInterface {
 	std::vector<vk::raii::ImageView> m_textureImageViews {};
 	std::vector<vk::raii::Sampler> m_textureSamplers {};
 
-	std::vector<vk::raii::Buffer> m_mvpBuffers {};
-	std::vector<VmaAllocation> m_mvpAllocations {};
+	std::array<std::vector<vk::raii::Buffer>, 2> m_mvpBuffers {};
+	std::array<std::vector<VmaAllocation>, 2> m_mvpAllocations {};
 
 	vk::raii::DescriptorSetLayout m_descriptorSetLayout {nullptr};
 	vk::raii::DescriptorPool m_descriptorPool {nullptr};
@@ -136,7 +137,9 @@ class VulkanInterface {
 		vmaDestroyImage(m_allocator, m_depthImage.release(), m_depthImageAllocation);
 		destroyMeshes();
 		for (int i {0}; i < m_mvpBuffers.size(); ++i) {
-			vmaDestroyBuffer(m_allocator, m_mvpBuffers[i].release(), m_mvpAllocations[i]);
+			for (int j {0}; j < m_mvpBuffers[0].size(); ++j) {
+				vmaDestroyBuffer(m_allocator, m_mvpBuffers[i][j].release(), m_mvpAllocations[i][j]);
+			}
 		}
 		vmaDestroyAllocator(m_allocator);
 		glfwDestroyWindow(m_window);
@@ -212,10 +215,10 @@ class VulkanInterface {
 	copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuffer, vk::DeviceSize size) const;
 	void loadModels(const fastgltf::Asset&);
 
-	void createUniformBuffers();
+	void createUniformBuffers(const fastgltf::Asset&);
 
-	void createDescriptorPool();
-	vk::raii::DescriptorSetLayout createDescriptorSetLayout() const;
+	void createDescriptorPool(uint32_t, uint32_t);
+	vk::raii::DescriptorSetLayout createDescriptorSetLayout(uint32_t, uint32_t) const;
 	void createDescriptorSets(const fastgltf::Asset&);
 
 	static std::vector<char> readFile(const std::string&);
@@ -238,8 +241,7 @@ class VulkanInterface {
 	);
 	void recreateSwapChain();
 	void updateUniformBuffer(const ModelInstance&, const glm::mat4&);
-	void drawFrame();
-	void queueDrawModelInstance(const ModelInstance&, const glm::mat4&);
+	void queueDrawModelInstance(const ModelInstance&, const glm::mat4&, uint32_t&);
 };
 
 #endif // !VULKANINTERFACE_HPP

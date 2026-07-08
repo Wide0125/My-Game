@@ -7,16 +7,6 @@
 #include "VulkanInterface.hpp"
 
 void VulkanInterface::drawFrame() {
-	for (const auto* parentNode: m_currentScene->getParentNodes()) {
-		queueDrawModelInstance(*parentNode, glm::identity<glm::mat4>());
-	}
-	m_frameIndex = (m_frameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
-}
-
-void VulkanInterface::queueDrawModelInstance(
-	const ModelInstance& modelInstance, const glm::mat4& globalTransform
-) {
-
 	auto fenceResult =
 		m_device.waitForFences(*m_inFlightFences[m_frameIndex], vk::True, UINT64_MAX);
 	if (fenceResult != vk::Result::eSuccess) {
@@ -107,6 +97,59 @@ void VulkanInterface::queueDrawModelInstance(
 	);
 	commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), m_swapChainExtent));
 
+	uint32_t modelInstanceNum {0};
+	for (const auto* parentNode: m_currentScene->getParentNodes()) {
+		queueDrawModelInstance(*parentNode, glm::identity<glm::mat4>(), modelInstanceNum);
+		++modelInstanceNum;
+	}
+
+	commandBuffer.endRendering();
+	transition_image_layout(
+		m_swapChainImages[imageIndex],
+		vk::ImageLayout::eColorAttachmentOptimal,
+		vk::ImageLayout::ePresentSrcKHR,
+		vk::AccessFlagBits2::eColorAttachmentWrite,			// srcAccessMask
+		{},													// dstAccessMask
+		vk::PipelineStageFlagBits2::eColorAttachmentOutput, // srcStage
+		vk::PipelineStageFlagBits2::eBottomOfPipe,			// dstStage
+		vk::ImageAspectFlagBits::eColor
+	);
+	commandBuffer.end();
+
+	vk::PipelineStageFlags waitDestinationStageMask(
+		vk::PipelineStageFlagBits::eColorAttachmentOutput
+	);
+	const vk::SubmitInfo submitInfo {
+		.waitSemaphoreCount = 1,
+		.pWaitSemaphores = &*m_presentCompleteSemaphores[m_frameIndex],
+		.pWaitDstStageMask = &waitDestinationStageMask,
+		.commandBufferCount = 1,
+		.pCommandBuffers = &*m_commandBuffers[m_frameIndex],
+		.signalSemaphoreCount = 1,
+		.pSignalSemaphores = &*m_renderFinishedSemaphores[imageIndex]
+	};
+	m_queue.submit(submitInfo, *m_inFlightFences[m_frameIndex]);
+
+	const vk::PresentInfoKHR presentInfoKHR {
+		.waitSemaphoreCount = 1,
+		.pWaitSemaphores = &*m_renderFinishedSemaphores[imageIndex],
+		.swapchainCount = 1,
+		.pSwapchains = &*m_swapChain,
+		.pImageIndices = &imageIndex
+	};
+	result = m_queue.presentKHR(presentInfoKHR);
+	if (!(result == vk::Result::eSuccess or result == vk::Result::eSuboptimalKHR or
+		  result == vk::Result::eErrorOutOfDateKHR)) {
+		throw std::runtime_error("Failed to present!");
+	}
+
+	m_frameIndex = (m_frameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
+}
+
+void VulkanInterface::queueDrawModelInstance(
+	const ModelInstance& modelInstance, const glm::mat4& globalTransform, uint32_t& modelInstanceNum
+) {
+
 	const auto& currMeshBuffers {*modelInstance.mesh};
 
 	// update uniform buffer
@@ -116,19 +159,26 @@ void VulkanInterface::queueDrawModelInstance(
 		glm::scale(modelInstance.scale)
 	};
 	ubo.model = globalTransform * localTransform;
+	const glm::vec3& cameraPosition {m_currentScene->sceneCamera.getCameraPosition()};
+	const auto up {m_currentScene->sceneCamera.getUp()};
 	ubo.view = lookAt(
-		glm::vec3(5.0f, 5.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)
+		cameraPosition,
+		cameraPosition + m_currentScene->sceneCamera.getLookAtVector(),
+		m_currentScene->sceneCamera.getUp()
 	);
 	ubo.proj = glm::perspective(
 		glm::radians(45.0f),
 		static_cast<float>(m_swapChainExtent.width) / static_cast<float>(m_swapChainExtent.height),
 		0.1f,
-		10.0f
+		100.0f
 	);
 	ubo.proj[1][1] *= -1;
 
-	vmaCopyMemoryToAllocation(m_allocator, &ubo, m_mvpAllocations[m_frameIndex], 0, sizeof(ubo));
+	vmaCopyMemoryToAllocation(
+		m_allocator, &ubo, m_mvpAllocations[m_frameIndex][modelInstanceNum], 0, sizeof(ubo)
+	);
 
+	auto& commandBuffer {m_commandBuffers[m_frameIndex]};
 	commandBuffer.bindVertexBuffers(0, *currMeshBuffers.vertexBuffer, {0});
 	commandBuffer.bindDescriptorSets(
 		vk::PipelineBindPoint::eGraphics,
@@ -145,51 +195,24 @@ void VulkanInterface::queueDrawModelInstance(
 			currMeshBuffers.indexBuffers[primitiveIndex], 0, vk::IndexType::eUint32
 		);
 
-		PushConstants textureIndex {currMeshBuffers.textureIndices[primitiveIndex]};
+		PushConstants matrixTextureIndices {
+			modelInstanceNum, currMeshBuffers.textureIndices[primitiveIndex]
+		};
 		commandBuffer.pushConstants<PushConstants>(
-			m_pipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, textureIndex
+			m_pipelineLayout,
+			vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+			0,
+			matrixTextureIndices
 		);
 
 		commandBuffer.drawIndexed(currMeshBuffers.indicesCount, 1, 0, 0, 0);
-		commandBuffer.endRendering();
-		transition_image_layout(
-			m_swapChainImages[imageIndex],
-			vk::ImageLayout::eColorAttachmentOptimal,
-			vk::ImageLayout::ePresentSrcKHR,
-			vk::AccessFlagBits2::eColorAttachmentWrite,			// srcAccessMask
-			{},													// dstAccessMask
-			vk::PipelineStageFlagBits2::eColorAttachmentOutput, // srcStage
-			vk::PipelineStageFlagBits2::eBottomOfPipe,			// dstStage
-			vk::ImageAspectFlagBits::eColor
-		);
-		commandBuffer.end();
-
-		vk::PipelineStageFlags waitDestinationStageMask(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput
-		);
-		const vk::SubmitInfo submitInfo {
-			.waitSemaphoreCount = 1,
-			.pWaitSemaphores = &*m_presentCompleteSemaphores[m_frameIndex],
-			.pWaitDstStageMask = &waitDestinationStageMask,
-			.commandBufferCount = 1,
-			.pCommandBuffers = &*m_commandBuffers[m_frameIndex],
-			.signalSemaphoreCount = 1,
-			.pSignalSemaphores = &*m_renderFinishedSemaphores[imageIndex]
-		};
-		m_queue.submit(submitInfo, *m_inFlightFences[m_frameIndex]);
-
-		const vk::PresentInfoKHR presentInfoKHR {
-			.waitSemaphoreCount = 1,
-			.pWaitSemaphores = &*m_renderFinishedSemaphores[imageIndex],
-			.swapchainCount = 1,
-			.pSwapchains = &*m_swapChain,
-			.pImageIndices = &imageIndex
-		};
-		assert(m_queue.presentKHR(presentInfoKHR) == vk::Result::eSuccess);
 	}
 	for (const auto& childIndex: modelInstance.childIndices) {
+		++modelInstanceNum;
 		queueDrawModelInstance(
-			m_currentScene->getNodes()[childIndex], globalTransform * localTransform
+			m_currentScene->getNodes()[childIndex],
+			globalTransform * localTransform,
+			modelInstanceNum
 		);
 	}
 }

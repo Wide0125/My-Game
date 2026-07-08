@@ -254,11 +254,11 @@ void VulkanInterface::copyBuffer(
 	m_queue.waitIdle();
 }
 
-void VulkanInterface::createDescriptorPool() {
+void VulkanInterface::createDescriptorPool(uint32_t nodeCount, uint32_t textureCount) {
 	std::array<vk::DescriptorPoolSize, 2> poolSize {
-		{{.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		{{.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = nodeCount * MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eCombinedImageSampler,
-		  .descriptorCount = MAX_TEXTURES * MAX_FRAMES_IN_FLIGHT}}
+		  .descriptorCount = textureCount * MAX_FRAMES_IN_FLIGHT}}
 	};
 	vk::DescriptorPoolCreateInfo poolInfo {
 		.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
@@ -269,27 +269,27 @@ void VulkanInterface::createDescriptorPool() {
 	m_descriptorPool = {m_device, poolInfo};
 }
 vk::raii::DescriptorSetLayout
-VulkanInterface::createDescriptorSetLayout() const {
+VulkanInterface::createDescriptorSetLayout(uint32_t nodeCount, uint32_t textureCount) const {
 	std::array bindings {
 		vk::DescriptorSetLayoutBinding(
-			0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr
+			0, vk::DescriptorType::eUniformBuffer, nodeCount, vk::ShaderStageFlagBits::eVertex, nullptr
 		),
 		vk::DescriptorSetLayoutBinding(
 			1,
 			vk::DescriptorType::eCombinedImageSampler,
-			MAX_TEXTURES,
+			textureCount,
 			vk::ShaderStageFlagBits::eFragment,
 			nullptr
 		)
 	};
-	std::array<vk::DescriptorBindingFlags, 2> bindingFlags {
-		{vk::DescriptorBindingFlags {}, vk::DescriptorBindingFlagBits::ePartiallyBound}
-	};
-	vk::DescriptorSetLayoutBindingFlagsCreateInfo bindingInfo {
-		.pBindingFlags = bindingFlags.data()
-	};
+	// std::array<vk::DescriptorBindingFlags, 2> bindingFlags {
+	// 	{vk::DescriptorBindingFlags {}, vk::DescriptorBindingFlagBits::ePartiallyBound}
+	// };
+	// vk::DescriptorSetLayoutBindingFlagsCreateInfo bindingInfo {
+	// 	.pBindingFlags = bindingFlags.data()
+	// };
 	vk::DescriptorSetLayoutCreateInfo layoutInfo {
-		.pNext = &bindingInfo,
+		// .pNext = &bindingInfo,
 		.bindingCount = static_cast<uint32_t>(bindings.size()),
 		.pBindings = bindings.data()
 	};

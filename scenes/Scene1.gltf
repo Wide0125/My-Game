@@ -23,22 +23,22 @@
   "nodes": [
     {
       "mesh": 0,
-      "name": "Cube.001"
+      "name": "Cube"
     },
     {
       "mesh": 1,
       "name": "mesh_all1_Texture1_0",
       "translation": [
         3.1150286197662354,
-        0.05866122245788574,
-        0
+        0,
+        0.05866122245788574
       ]
     }
   ],
   "materials": [
     {
       "doubleSided": true,
-      "name": "Material.001",
+      "name": "Material",
       "pbrMetallicRoughness": {
         "baseColorTexture": {
           "index": 0
@@ -65,7 +65,7 @@
   ],
   "meshes": [
     {
-      "name": "Cube.001",
+      "name": "Cube",
       "primitives": [
         {
           "attributes": {
@@ -113,11 +113,11 @@
   ],
   "images": [
     {
-      "name": "Scene1_img0",
+      "name": "texture",
       "uri": "Scene1_img0.ktx2"
     },
     {
-      "name": "Scene1_img1",
+      "name": "viking_room",
       "uri": "Scene1_img1.ktx2"
     }
   ],
@@ -159,29 +159,29 @@
     {
       "bufferView": 4,
       "componentType": 5126,
-      "count": 4887,
+      "count": 4677,
       "max": [
         0.7419049739837646,
-        0.9248819947242737,
-        0.7210429906845093
+        0.7395349740982056,
+        0.9248819947242737
       ],
       "min": [
         -0.5853449702262878,
-        -0.10764700174331665,
-        -0.7395349740982056
+        -0.7210429906845093,
+        -0.10764700174331665
       ],
       "type": "VEC3"
     },
     {
       "bufferView": 5,
       "componentType": 5126,
-      "count": 4887,
+      "count": 4677,
       "type": "VEC3"
     },
     {
       "bufferView": 6,
       "componentType": 5126,
-      "count": 4887,
+      "count": 4677,
       "type": "VEC2"
     },
     {
@@ -218,26 +218,26 @@
     },
     {
       "buffer": 0,
-      "byteLength": 58644,
+      "byteLength": 56124,
       "byteOffset": 840,
       "target": 34962
     },
     {
       "buffer": 0,
-      "byteLength": 58644,
-      "byteOffset": 59484,
+      "byteLength": 56124,
+      "byteOffset": 56964,
       "target": 34962
     },
     {
       "buffer": 0,
-      "byteLength": 39096,
-      "byteOffset": 118128,
+      "byteLength": 37416,
+      "byteOffset": 113088,
       "target": 34962
     },
     {
       "buffer": 0,
       "byteLength": 22968,
-      "byteOffset": 157224,
+      "byteOffset": 150504,
       "target": 34963
     }
   ],
@@ -250,7 +250,7 @@
   "buffers": [
     {
       "uri": "Scene1_data.bin",
-      "byteLength": 180192
+      "byteLength": 173472
     }
   ]
 }
