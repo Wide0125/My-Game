@@ -8,12 +8,13 @@
 #define GLFW_INCLUDE_VULKAN
 
 #include "VulkanInterface.hpp"
-#include "scene.hpp"
+#include "Scene.hpp"
 
 
 int main() {
     VulkanInterface renderer {};
-    std::unique_ptr<Scene> currentScene {std::make_unique<Scene>("Scene1.glb", renderer)};
-    renderer.waitIdle();
+	std::unique_ptr<Scene> currentScene {std::make_unique<Scene>("Scene1.glb", renderer)};
+	renderer.run();
+	renderer.waitIdle();
     return 0;
 }

@@ -10,6 +10,7 @@ struct UniformBuffer {
     float4x4 view;
     float4x4 proj;
 };
+[[vk::binding(0, 0)]]
 ConstantBuffer<UniformBuffer> ubo;
 
 struct VSOutput
@@ -28,12 +29,16 @@ VSOutput vertMain(VSInput input) {
     return output;
 }
 
-Sampler2D texture;
+struct PushData { uint textureIndex; };
+
+[[vk::binding(1, 0)]] Sampler2D textures[];
+[[vk::push_constant]]
+ConstantBuffer<PushData> pushData;
 
 [shader("fragment")]
 float4 fragMain(VSOutput vertIn) : SV_TARGET {
-    if (isnan(vertIn.fragTexCoord.x) && isnan(vertIn.fragTexCoord.y)) {
-        return {0, 0, 0, 0};
-    }
-    return texture.Sample(vertIn.fragTexCoord);
+    // if (isnan(vertIn.fragTexCoord.x) && isnan(vertIn.fragTexCoord.y)) {
+    //     return {0, 0, 0, 0};
+    // }
+    return textures[pushData.textureIndex].Sample(vertIn.fragTexCoord);
 }

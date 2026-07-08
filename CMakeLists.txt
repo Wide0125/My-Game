@@ -21,7 +21,7 @@ if(WIN32)
   list(APPEND CMAKE_PREFIX_PATH "${CMAKE_CURRENT_SOURCE_DIR}/glfw3.4/lib/cmake")
 endif()
 
-find_package(Vulkan 1.4.335 REQUIRED)
+find_package(Vulkan 1.4.350 REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(glm REQUIRED)
 find_package(fastgltf REQUIRED)
@@ -81,6 +81,7 @@ add_executable(${PROJECT_NAME}
   src/VulkanInterfaceInit.cpp
   src/VulkanInterfaceLoadScene.cpp
   src/VulkanInterfaceHelpers.cpp
+  src/VulkanInterfaceDraw.cpp
   )
 
 target_link_libraries (${PROJECT_NAME} Vulkan::cppm glfw glm::glm fastgltf VulkanMemoryAllocator KTX::ktx)

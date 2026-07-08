@@ -93,52 +93,6 @@ vk::SurfaceFormatKHR VulkanInterface::chooseSwapSurfaceFormat(
 	return formatIt != availableFormats.end() ? *formatIt : availableFormats[0];
 }
 
-std::vector<char> VulkanInterface::readFile(const std::string& filename) {
-	std::ifstream file {filename, std::ios::ate | std::ios::binary};
-	if (!file.is_open()) {
-		throw std::runtime_error("Failed to open file!");
-	}
-	std::vector<char> buffer(file.tellg());
-	file.seekg(0, std::ios::beg);
-	file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
-	file.close();
-	return buffer;
-}
-[[nodiscard]] vk::raii::ShaderModule
-VulkanInterface::createShaderModule(const std::vector<char>& code) const {
-	vk::ShaderModuleCreateInfo createInfo {
-		.codeSize = code.size(), .pCode = reinterpret_cast<const uint32_t*>(code.data())
-	};
-	return {m_device, createInfo};
-}
-vk::Format VulkanInterface::findSupportedFormat(
-	const std::vector<vk::Format>& candidates,
-	vk::ImageTiling tiling,
-	vk::FormatFeatureFlags features
-) const {
-	for (const auto format: candidates) {
-		vk::FormatProperties props {m_physicalDevice.getFormatProperties(format)};
-
-		if (tiling == vk::ImageTiling::eLinear and
-			(props.linearTilingFeatures & features) == features) {
-			return format;
-		}
-		if (tiling == vk::ImageTiling::eOptimal and
-			(props.optimalTilingFeatures & features) == features) {
-			return format;
-		}
-	}
-
-	throw std::runtime_error("Failed to find supported format!");
-}
-[[nodiscard]] vk::Format VulkanInterface::findDepthFormat() const {
-	return findSupportedFormat(
-		{vk::Format::eD32Sfloat, vk::Format::eD32SfloatS8Uint, vk::Format::eD24UnormS8Uint},
-		vk::ImageTiling::eOptimal,
-		vk::FormatFeatureFlagBits::eDepthStencilAttachment
-	);
-}
-
 void VulkanInterface::createImage(
 	uint32_t width,
 	uint32_t height,
@@ -298,4 +252,143 @@ void VulkanInterface::copyBuffer(
 		vk::SubmitInfo {.commandBufferCount = 1, .pCommandBuffers = &*commandCopyBuffer}, nullptr
 	);
 	m_queue.waitIdle();
+}
+
+void VulkanInterface::createDescriptorPool() {
+	std::array<vk::DescriptorPoolSize, 2> poolSize {
+		{{.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eCombinedImageSampler,
+		  .descriptorCount = 1000 * MAX_FRAMES_IN_FLIGHT}}
+	};
+	vk::DescriptorPoolCreateInfo poolInfo {
+		.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+		.maxSets = MAX_FRAMES_IN_FLIGHT,
+		.poolSizeCount = static_cast<uint32_t>(poolSize.size()),
+		.pPoolSizes = poolSize.data()
+	};
+	m_descriptorPool = {m_device, poolInfo};
+}
+vk::raii::DescriptorSetLayout
+VulkanInterface::createDescriptorSetLayout() const {
+	std::array bindings {
+		vk::DescriptorSetLayoutBinding(
+			0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr
+		),
+		vk::DescriptorSetLayoutBinding(
+			1,
+			vk::DescriptorType::eCombinedImageSampler,
+			1000,
+			vk::ShaderStageFlagBits::eFragment,
+			nullptr
+		)
+	};
+	std::array<vk::DescriptorBindingFlags, 2> bindingFlags {
+		{vk::DescriptorBindingFlags {}, vk::DescriptorBindingFlagBits::ePartiallyBound}
+	};
+	vk::DescriptorSetLayoutBindingFlagsCreateInfo bindingInfo {
+		.pBindingFlags = bindingFlags.data()
+	};
+	vk::DescriptorSetLayoutCreateInfo layoutInfo {
+		.pNext = &bindingInfo,
+		.bindingCount = static_cast<uint32_t>(bindings.size()),
+		.pBindings = bindings.data()
+	};
+	return {m_device, layoutInfo};
+}
+
+std::vector<char> VulkanInterface::readFile(const std::string& filename) {
+	std::ifstream file {filename, std::ios::ate | std::ios::binary};
+	if (!file.is_open()) {
+		throw std::runtime_error("Failed to open file!");
+	}
+	std::vector<char> buffer(file.tellg());
+	file.seekg(0, std::ios::beg);
+	file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+	file.close();
+	return buffer;
+}
+[[nodiscard]] vk::raii::ShaderModule
+VulkanInterface::createShaderModule(const std::vector<char>& code) const {
+	vk::ShaderModuleCreateInfo createInfo {
+		.codeSize = code.size(), .pCode = reinterpret_cast<const uint32_t*>(code.data())
+	};
+	return {m_device, createInfo};
+}
+vk::Format VulkanInterface::findSupportedFormat(
+	const std::vector<vk::Format>& candidates,
+	vk::ImageTiling tiling,
+	vk::FormatFeatureFlags features
+) const {
+	for (const auto format: candidates) {
+		vk::FormatProperties props {m_physicalDevice.getFormatProperties(format)};
+
+		if (tiling == vk::ImageTiling::eLinear and
+			(props.linearTilingFeatures & features) == features) {
+			return format;
+		}
+		if (tiling == vk::ImageTiling::eOptimal and
+			(props.optimalTilingFeatures & features) == features) {
+			return format;
+		}
+	}
+
+	throw std::runtime_error("Failed to find supported format!");
+}
+[[nodiscard]] vk::Format VulkanInterface::findDepthFormat() const {
+	return findSupportedFormat(
+		{vk::Format::eD32Sfloat, vk::Format::eD32SfloatS8Uint, vk::Format::eD24UnormS8Uint},
+		vk::ImageTiling::eOptimal,
+		vk::FormatFeatureFlagBits::eDepthStencilAttachment
+	);
+}
+
+// draw helper functions
+void VulkanInterface::recreateSwapChain() {
+	int width = 0, height = 0;
+	glfwGetFramebufferSize(m_window, &width, &height);
+	while (width == 0 || height == 0) {
+		glfwGetFramebufferSize(m_window, &width, &height);
+		glfwWaitEvents();
+	}
+
+	m_device.waitIdle();
+
+	m_swapChainImageViews.clear();
+	m_swapChain = nullptr;
+
+	createSwapChain();
+	createDepthResources();
+}
+void VulkanInterface::transition_image_layout(
+	vk::Image image,
+	vk::ImageLayout old_layout,
+	vk::ImageLayout new_layout,
+	vk::AccessFlags2 src_access_mask,
+	vk::AccessFlags2 dst_access_mask,
+	vk::PipelineStageFlags2 src_stage_mask,
+	vk::PipelineStageFlags2 dst_stage_mask,
+	vk::ImageAspectFlags image_aspect_flags
+) {
+	vk::ImageMemoryBarrier2 barrier = {
+		.srcStageMask = src_stage_mask,
+		.srcAccessMask = src_access_mask,
+		.dstStageMask = dst_stage_mask,
+		.dstAccessMask = dst_access_mask,
+		.oldLayout = old_layout,
+		.newLayout = new_layout,
+		.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.image = image,
+		.subresourceRange = {
+			.aspectMask = image_aspect_flags,
+			.baseMipLevel = 0,
+			.levelCount = 1,
+			.baseArrayLayer = 0,
+			.layerCount = 1
+		}
+	};
+	vk::DependencyInfo dependency_info = {
+		.dependencyFlags = {}, .imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier
+	};
+	m_commandBuffers[m_frameIndex].pipelineBarrier2(dependency_info);
 }

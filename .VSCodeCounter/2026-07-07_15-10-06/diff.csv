@@ -1,0 +1,26 @@
+"filename", "language", "C++", "Slang", "JSON", "CMake", "comment", "blank", "total"
+"/Users/brianpark/Desktop/Code/My Game/CMakeLists.txt", "CMake", 0, 0, 0, 1, 0, 0, 1
+"/Users/brianpark/Desktop/Code/My Game/build/.cmake/api/v1/reply/cache-v2-1f75d348e8dfcf5fc9aa.json", "JSON", 0, 0, -2679, 0, 0, -1, -2680
+"/Users/brianpark/Desktop/Code/My Game/build/.cmake/api/v1/reply/cache-v2-4a2f1c5fbb840a976ee4.json", "JSON", 0, 0, 2679, 0, 0, 1, 2680
+"/Users/brianpark/Desktop/Code/My Game/build/.cmake/api/v1/reply/cmakeFiles-v1-deba320072694707c63b.json", "JSON", 0, 0, 601, 0, 0, 1, 602
+"/Users/brianpark/Desktop/Code/My Game/build/.cmake/api/v1/reply/cmakeFiles-v1-e9548a905a1de5d12ee0.json", "JSON", 0, 0, -1339, 0, 0, -1, -1340
+"/Users/brianpark/Desktop/Code/My Game/build/.cmake/api/v1/reply/codemodel-v2-846b1f612f6fbc7389f1.json", "JSON", 0, 0, 272, 0, 0, 1, 273
+"/Users/brianpark/Desktop/Code/My Game/build/.cmake/api/v1/reply/codemodel-v2-b13c181235dba287f2ae.json", "JSON", 0, 0, -272, 0, 0, -1, -273
+"/Users/brianpark/Desktop/Code/My Game/build/.cmake/api/v1/reply/index-2026-07-06T09-53-30-0441.json", "JSON", 0, 0, -132, 0, 0, -1, -133
+"/Users/brianpark/Desktop/Code/My Game/build/.cmake/api/v1/reply/index-2026-07-07T03-40-26-0877.json", "JSON", 0, 0, 132, 0, 0, 1, 133
+"/Users/brianpark/Desktop/Code/My Game/build/.cmake/api/v1/reply/target-MyGame-Debug-6cbeeb7bb9d6bc16033d.json", "JSON", 0, 0, -521, 0, 0, -1, -522
+"/Users/brianpark/Desktop/Code/My Game/build/.cmake/api/v1/reply/target-MyGame-Debug-7c7ff6e6e2a6dc5fc69c.json", "JSON", 0, 0, 529, 0, 0, 1, 530
+"/Users/brianpark/Desktop/Code/My Game/build/.cmake/api/v1/reply/target-foo-Debug-08dc91e436f2c84faf38.json", "JSON", 0, 0, 92, 0, 0, 1, 93
+"/Users/brianpark/Desktop/Code/My Game/build/.cmake/api/v1/reply/target-foo-Debug-7608a369c2b3d423146f.json", "JSON", 0, 0, -92, 0, 0, -1, -93
+"/Users/brianpark/Desktop/Code/My Game/build/CMakeFiles/MyGame.dir/CXXDependInfo.json", "JSON", 0, 0, 5, 0, 0, 0, 5
+"/Users/brianpark/Desktop/Code/My Game/build/compile_commands.json", "JSON", 0, 0, 6, 0, 0, 0, 6
+"/Users/brianpark/Desktop/Code/My Game/src/MeshBuffers.hpp", "C++", 2, 0, 0, 0, 0, 2, 4
+"/Users/brianpark/Desktop/Code/My Game/src/ModelInstance.hpp", "C++", 1, 0, 0, 0, 0, 0, 1
+"/Users/brianpark/Desktop/Code/My Game/src/Scene.hpp", "C++", 43, 0, 0, 0, 0, 3, 46
+"/Users/brianpark/Desktop/Code/My Game/src/VulkanInterface.hpp", "C++", 28, 0, 0, 0, 0, 4, 32
+"/Users/brianpark/Desktop/Code/My Game/src/VulkanInterfaceDraw.cpp", "C++", 172, 0, 0, 0, 3, 20, 195
+"/Users/brianpark/Desktop/Code/My Game/src/VulkanInterfaceHelpers.cpp", "C++", 46, 0, 0, 0, 1, 4, 51
+"/Users/brianpark/Desktop/Code/My Game/src/VulkanInterfaceLoadScene.cpp", "C++", 19, 0, 0, 0, 0, 3, 22
+"/Users/brianpark/Desktop/Code/My Game/src/main.cpp", "C++", 1, 0, 0, 0, 0, 0, 1
+"/Users/brianpark/Desktop/Code/My Game/src/shader.slang", "Slang", 0, 4, 0, 0, 0, 1, 5
+"Total", "-", 312, 4, -719, 1, 4, 37, -361

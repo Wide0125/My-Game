@@ -17,20 +17,40 @@ import vulkan_hpp;
 
 #include "fastgltf/types.hpp"
 
+#include "MeshBuffers.hpp"
+#include "ModelInstance.hpp"
+
+class Scene;
+
 struct UniformBufferObject {
 	alignas(16) glm::mat4 model;
 	alignas(16) glm::mat4 view;
 	alignas(16) glm::mat4 proj;
 };
 
+struct PushConstants {
+	uint32_t textureIndex;
+};
+
 class VulkanInterface {
   public:
 	VulkanInterface();
 	~VulkanInterface() { cleanup(); }
-	void loadScene(const fastgltf::Asset& asset); // load gltf information onto GPU
+	void
+	loadScene(const fastgltf::Asset& asset, const Scene* scene); // load gltf information onto GPU
 
 	void waitIdle() { m_device.waitIdle(); }
 
+	const MeshBuffers& getMeshBuffers(size_t index) const { return m_meshes[index]; }
+
+	void run() {
+		while (!glfwWindowShouldClose(m_window)) {
+			glfwPollEvents();
+			drawFrame();
+		}
+
+		m_device.waitIdle();
+	}
   private:
 	static constexpr int MAX_FRAMES_IN_FLIGHT {2};
 
@@ -38,6 +58,8 @@ class VulkanInterface {
 
 	vk::raii::Context m_context {};
 	vk::raii::Instance m_instance {nullptr}; // Vulkan instance
+
+	const Scene* m_currentScene;
 
 	vk::raii::SurfaceKHR m_surface {nullptr}; // surface for Vulkan to draw onto
 
@@ -58,27 +80,12 @@ class VulkanInterface {
 	vk::SurfaceFormatKHR m_swapChainSurfaceFormat {};
 	std::vector<vk::raii::ImageView> m_swapChainImageViews {};
 
-	vk::raii::DescriptorSetLayout m_descriptorSetLayout {nullptr};
-	vk::raii::Pipeline m_graphicsPipeline {nullptr};
-	vk::raii::PipelineLayout m_pipelineLayout {nullptr};
-
 	vk::raii::CommandPool m_commandPool {nullptr};
 	std::vector<vk::raii::CommandBuffer> m_commandBuffers {};
 
 	vk::raii::Image m_depthImage {nullptr};
 	VmaAllocation m_depthImageAllocation {nullptr};
 	vk::raii::ImageView m_depthImageView {nullptr};
-
-	struct MeshBuffers {
-		vk::raii::Buffer vertexBuffer {nullptr};
-		VmaAllocation vertexAllocation {};
-
-		std::vector<vk::raii::Buffer> indexBuffers {};
-		std::vector<VmaAllocation> indexAllocations {};
-
-		// std::vector<Material> materials {};
-		// TODO: Implement materials
-	};
 
 	std::vector<MeshBuffers> m_meshes {};
 	void destroyMeshes() {
@@ -106,12 +113,27 @@ class VulkanInterface {
 	std::vector<vk::raii::ImageView> m_textureImageViews {};
 	std::vector<vk::raii::Sampler> m_textureSamplers {};
 
+	std::vector<vk::raii::Buffer> m_mvpBuffers {};
+	std::vector<VmaAllocation> m_mvpAllocations {};
+
+	vk::raii::DescriptorSetLayout m_descriptorSetLayout {nullptr};
+	vk::raii::DescriptorPool m_descriptorPool {nullptr};
+	std::vector<vk::raii::DescriptorSet> m_descriptorSets {};
+
+	vk::raii::Pipeline m_graphicsPipeline {nullptr};
+	vk::raii::PipelineLayout m_pipelineLayout {nullptr};
+
+	uint32_t m_frameIndex {0};
+
 	void initWindow(); // initialize GLFW window for Vulkan
 	void initVulkan(); // initialize Vulkan
 	void cleanup() {
 		m_textureImages.clear();
 		vmaDestroyImage(m_allocator, m_depthImage.release(), m_depthImageAllocation);
 		destroyMeshes();
+		for (int i {0}; i < m_mvpBuffers.size(); ++i) {
+			vmaDestroyBuffer(m_allocator, m_mvpBuffers[i].release(), m_mvpAllocations[i]);
+		}
 		vmaDestroyAllocator(m_allocator);
 		glfwDestroyWindow(m_window);
 		glfwTerminate();
@@ -134,16 +156,6 @@ class VulkanInterface {
 	static vk::SurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>&);
 	void createSwapChain();			  // create swap chain of surfaces
 	void createSwapChainImageViews(); // create image views of swap chain images
-
-	void createDescriptorSetLayout();
-
-	static std::vector<char> readFile(const std::string&);
-	[[nodiscard]] vk::raii::ShaderModule createShaderModule(const std::vector<char>&) const;
-	vk::Format findSupportedFormat(
-		const std::vector<vk::Format>&, vk::ImageTiling, vk::FormatFeatureFlags
-	) const;
-	[[nodiscard]] vk::Format findDepthFormat() const;
-	void createGraphicsPipeline();
 
 	void createCommandPool();
 
@@ -195,6 +207,35 @@ class VulkanInterface {
 	void
 	copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuffer, vk::DeviceSize size) const;
 	void loadModels(const fastgltf::Asset&);
+
+	void createUniformBuffers();
+
+	void createDescriptorPool();
+	vk::raii::DescriptorSetLayout createDescriptorSetLayout() const;
+	void createDescriptorSets(const fastgltf::Asset&);
+
+	static std::vector<char> readFile(const std::string&);
+	[[nodiscard]] vk::raii::ShaderModule createShaderModule(const std::vector<char>&) const;
+	vk::Format findSupportedFormat(
+		const std::vector<vk::Format>&, vk::ImageTiling, vk::FormatFeatureFlags
+	) const;
+	[[nodiscard]] vk::Format findDepthFormat() const;
+	void createGraphicsPipeline();
+
+	void transition_image_layout(
+		vk::Image,
+		vk::ImageLayout,
+		vk::ImageLayout,
+		vk::AccessFlags2,
+		vk::AccessFlags2,
+		vk::PipelineStageFlags2,
+		vk::PipelineStageFlags2,
+		vk::ImageAspectFlags
+	);
+	void recreateSwapChain();
+	void updateUniformBuffer(const ModelInstance&, const glm::mat4&);
+	void drawFrame();
+	void queueDrawModelInstance(const ModelInstance&, const glm::mat4&);
 };
 
 #endif // !VULKANINTERFACE_HPP

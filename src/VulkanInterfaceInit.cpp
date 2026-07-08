@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <array>
 #include <cstdint>
 #include <print>
 #include <stdexcept>
@@ -15,7 +14,6 @@
 #include <string>
 
 #include "VulkanInterface.hpp"
-#include "vertex.hpp"
 
 VulkanInterface::VulkanInterface() {
 	initWindow();
@@ -45,8 +43,6 @@ void VulkanInterface::initVulkan() {
 	createVmaAllocator();
 	createSwapChain();
 	createSwapChainImageViews();
-	createDescriptorSetLayout();
-	createGraphicsPipeline();
 	createCommandPool();
 	createDepthResources();
 	createCommandBuffers();
@@ -145,10 +141,12 @@ void VulkanInterface::createLogicalDevice() {
 	// query for Vulkan 1.3 features
 	vk::StructureChain<
 		vk::PhysicalDeviceFeatures2,
+		vk::PhysicalDeviceVulkan12Features,
 		vk::PhysicalDeviceVulkan13Features,
 		vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>
 		featureChain {
 			{.features = {.samplerAnisotropy = true}}, // vk::PhysicalDeviceFeatures2
+			{.descriptorBindingPartiallyBound = true, .runtimeDescriptorArray = true},
 			{.synchronization2 = true,
 			 .dynamicRendering = true},	   // vk::PhysicalDeviceVulkan13Features
 			{.extendedDynamicState = true} // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
@@ -232,125 +230,6 @@ void VulkanInterface::createSwapChainImageViews() {
 		imageViewCreateInfo.image = image;
 		m_swapChainImageViews.emplace_back(m_device, imageViewCreateInfo);
 	}
-}
-
-void VulkanInterface::createDescriptorSetLayout() {
-	std::array bindings {
-		vk::DescriptorSetLayoutBinding(
-			0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr
-		),
-		vk::DescriptorSetLayoutBinding(
-			1,
-			vk::DescriptorType::eCombinedImageSampler,
-			1,
-			vk::ShaderStageFlagBits::eFragment,
-			nullptr
-		)
-	};
-	vk::DescriptorSetLayoutCreateInfo layoutInfo {
-		.bindingCount = static_cast<uint32_t>(bindings.size()),
-		.pBindings = bindings.data(),
-	};
-	m_descriptorSetLayout = {m_device, layoutInfo};
-}
-
-void VulkanInterface::createGraphicsPipeline() {
-	vk::raii::ShaderModule shaderModule {createShaderModule(readFile(SHADER_PATH "/slang.spv"))};
-
-	vk::PipelineShaderStageCreateInfo vertShaderStageInfo {
-		.stage = vk::ShaderStageFlagBits::eVertex, .module = shaderModule, .pName = "vertMain"
-	};
-	vk::PipelineShaderStageCreateInfo fragShaderStageInfo {
-		.stage = vk::ShaderStageFlagBits::eFragment, .module = shaderModule, .pName = "fragMain"
-	};
-	vk::PipelineShaderStageCreateInfo shaderStages[] {vertShaderStageInfo, fragShaderStageInfo};
-
-	auto bindingDescription {Vertex::getBindingDescription()};
-	auto attributeDescriptions {Vertex::getAttributeDescriptions()};
-	vk::PipelineVertexInputStateCreateInfo vertexInputInfo {
-		.vertexBindingDescriptionCount = 1,
-		.pVertexBindingDescriptions = &bindingDescription,
-		.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size()),
-		.pVertexAttributeDescriptions = attributeDescriptions.data()
-	};
-
-	vk::PipelineInputAssemblyStateCreateInfo inputAssembly {
-		.topology = vk::PrimitiveTopology::eTriangleList, .primitiveRestartEnable = vk::False
-	};
-
-	vk::PipelineViewportStateCreateInfo viewportState {.viewportCount = 1, .scissorCount = 1};
-
-	vk::PipelineRasterizationStateCreateInfo rasterizer {
-		.depthClampEnable = vk::False,
-		.rasterizerDiscardEnable = vk::False,
-		.polygonMode = vk::PolygonMode::eFill,
-		.cullMode = vk::CullModeFlagBits::eBack,
-		.frontFace = vk::FrontFace::eCounterClockwise,
-		.depthBiasEnable = vk::False,
-		.lineWidth = 1.0f
-	};
-
-	vk::PipelineMultisampleStateCreateInfo multisampling {
-		.rasterizationSamples = vk::SampleCountFlagBits::e1, .sampleShadingEnable = vk::False
-	};
-
-	vk::PipelineDepthStencilStateCreateInfo depthStencil {
-		.depthTestEnable = vk::True,
-		.depthWriteEnable = vk::True,
-		.depthCompareOp = vk::CompareOp::eLess,
-		.depthBoundsTestEnable = vk::False,
-		.stencilTestEnable = vk::False
-	};
-
-	vk::PipelineColorBlendAttachmentState colorBlendAttachment {
-		.blendEnable = vk::False,
-		.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
-						  vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA
-	};
-
-	vk::PipelineColorBlendStateCreateInfo colorBlending {
-		.logicOpEnable = vk::False,
-		.logicOp = vk::LogicOp::eCopy,
-		.attachmentCount = 1,
-		.pAttachments = &colorBlendAttachment
-	};
-
-	std::vector dynamicStates {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
-
-	vk::PipelineDynamicStateCreateInfo dynamicState {
-		.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()),
-		.pDynamicStates = dynamicStates.data()
-	};
-
-	vk::PipelineLayoutCreateInfo pipelineLayoutInfo {
-		.setLayoutCount = 1, .pSetLayouts = &*m_descriptorSetLayout, .pushConstantRangeCount = 0
-	};
-
-	m_pipelineLayout = {m_device, pipelineLayoutInfo};
-
-	vk::Format depthFormat {findDepthFormat()};
-
-	vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo>
-		pipelineCreateInfoChain {
-			{.stageCount = 2,
-			 .pStages = shaderStages,
-			 .pVertexInputState = &vertexInputInfo,
-			 .pInputAssemblyState = &inputAssembly,
-			 .pViewportState = &viewportState,
-			 .pRasterizationState = &rasterizer,
-			 .pMultisampleState = &multisampling,
-			 .pDepthStencilState = &depthStencil,
-			 .pColorBlendState = &colorBlending,
-			 .pDynamicState = &dynamicState,
-			 .layout = m_pipelineLayout,
-			 .renderPass = nullptr},
-			{.colorAttachmentCount = 1,
-			 .pColorAttachmentFormats = &m_swapChainSurfaceFormat.format,
-			 .depthAttachmentFormat = depthFormat}
-		};
-	m_graphicsPipeline = {
-		m_device, nullptr, pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>()
-	};
 }
 
 void VulkanInterface::createCommandPool() {

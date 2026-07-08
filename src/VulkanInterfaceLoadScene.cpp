@@ -17,13 +17,18 @@
 #include <fastgltf/types.hpp>
 #include <fastgltf/util.hpp>
 
+#include "Scene.hpp"
+#include "Vertex.hpp"
 #include "VulkanInterface.hpp"
-#include "vertex.hpp"
 
-void VulkanInterface::loadScene(const fastgltf::Asset& asset) {
+void VulkanInterface::loadScene(const fastgltf::Asset& asset, const Scene* scene) {
+	m_currentScene = scene;
 	createTextureImages(asset);
 	createTextureSamplers(asset);
 	loadModels(asset);
+	createUniformBuffers();
+	createDescriptorSets(asset);
+	createGraphicsPipeline();
 }
 
 void VulkanInterface::createTextureImages(const fastgltf::Asset& asset) {
@@ -136,7 +141,8 @@ void VulkanInterface::createTextureImages(const fastgltf::Asset& asset) {
 				vkTexture.levelCount
 			))
 		);
-		vkTexture.image = nullptr;
+	}
+	for (const auto& texture: asset.textures) {
 	}
 }
 void VulkanInterface::createTextureSamplers(const fastgltf::Asset& asset) {
@@ -226,6 +232,7 @@ void VulkanInterface::loadModels(const fastgltf::Asset& asset) {
 	for (const auto& mesh: asset.meshes) {
 		size_t positionsCount {0};
 		size_t hasIndicesCount {0};
+		size_t hasMaterialCount {0};
 		for (const auto& primitive: mesh.primitives) {
 			positionsCount +=
 				asset.accessors[primitive.findAttribute("POSITION")->accessorIndex].count;
@@ -238,8 +245,11 @@ void VulkanInterface::loadModels(const fastgltf::Asset& asset) {
 
 		std::vector<vk::raii::Buffer> indexBuffers {};
 		std::vector<VmaAllocation> indexBufferAllocations {};
+		uint32_t indicesCount {0};
 		indexBuffers.reserve(hasIndicesCount);
 		indexBufferAllocations.reserve(hasIndicesCount);
+		std::vector<uint32_t> textureIndices {};
+		textureIndices.reserve(hasIndicesCount);
 		size_t offset {0};
 		for (const auto& primitive: mesh.primitives) {
 			const auto& positionAccessor { // load vertices
@@ -274,9 +284,9 @@ void VulkanInterface::loadModels(const fastgltf::Asset& asset) {
 					glm::vec4 {0, 0, 0, 0}
 				);
 			}
-			const auto textureIt {primitive.findAttribute("TEXCOORD_0")}; // load UVs
-			if (textureIt != primitive.attributes.end()) {
-				const auto& texCoordsAccessor {asset.accessors[textureIt->accessorIndex]};
+			const auto texCoordsIt {primitive.findAttribute("TEXCOORD_0")}; // load UVs
+			if (texCoordsIt != primitive.attributes.end()) {
+				const auto& texCoordsAccessor {asset.accessors[texCoordsIt->accessorIndex]};
 				fastgltf::copyFromAccessor<glm::vec2>(
 					asset, texCoordsAccessor, texCoords.data() + offset
 				);
@@ -289,11 +299,11 @@ void VulkanInterface::loadModels(const fastgltf::Asset& asset) {
 			}
 
 			std::vector<uint32_t> indices {}; // load indices
-			if (primitive.indicesAccessor.has_value()) {
-				const auto& indicesAccessor {asset.accessors[primitive.indicesAccessor.value()]};
-				indices.resize(indicesAccessor.count);
-				fastgltf::copyFromAccessor<uint32_t>(asset, indicesAccessor, indices.data());
-			}
+			assert(primitive.indicesAccessor.has_value());
+			const auto& indicesAccessor {asset.accessors[primitive.indicesAccessor.value()]};
+			indices.resize(indicesAccessor.count);
+			fastgltf::copyFromAccessor<uint32_t>(asset, indicesAccessor, indices.data());
+			indicesCount += indicesAccessor.count;
 			vk::raii::Buffer stagingBuffer {nullptr};
 			VmaAllocation stagingAllocation {};
 			vk::DeviceSize bufferSize {sizeof(indices[0]) * indices.size()};
@@ -321,6 +331,13 @@ void VulkanInterface::loadModels(const fastgltf::Asset& asset) {
 
 			indexBuffers.push_back(std::move(indexBuffer));
 			indexBufferAllocations.push_back(std::move(indexBufferAllocation));
+
+			if (primitive.materialIndex.has_value()) {
+				textureIndices.push_back(asset.materials[primitive.materialIndex.value()]
+											 .pbrData.baseColorTexture->textureIndex);
+			} else {
+				textureIndices.push_back(-1);
+			}
 
 			offset += positionAccessor.count;
 		}
@@ -359,8 +376,178 @@ void VulkanInterface::loadModels(const fastgltf::Asset& asset) {
 				std::move(vertexBuffer),
 				std::move(vertexAllocation),
 				std::move(indexBuffers),
-				std::move(indexBufferAllocations)
+				std::move(indexBufferAllocations),
+				indicesCount,
+				textureIndices
 			}
 		);
 	}
+}
+
+void VulkanInterface::createUniformBuffers() {
+	for (size_t i {0}; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+		vk::DeviceSize bufferSize {sizeof(UniformBufferObject)};
+		vk::raii::Buffer mvpBuffer {nullptr};
+		VmaAllocation mvpAllocation {};
+
+		createBuffer(
+			bufferSize,
+			vk::BufferUsageFlagBits::eUniformBuffer,
+			VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+			mvpBuffer,
+			mvpAllocation
+		);
+		m_mvpBuffers.emplace_back(std::move(mvpBuffer));
+		m_mvpAllocations.emplace_back(std::move(mvpAllocation));
+	}
+}
+
+void VulkanInterface::createDescriptorSets(const fastgltf::Asset& asset) {
+	uint32_t textureCount {static_cast<uint32_t>(asset.textures.size())};
+	createDescriptorPool();
+	m_descriptorSetLayout = createDescriptorSetLayout();
+	std::vector<vk::DescriptorSetLayout> layouts {MAX_FRAMES_IN_FLIGHT, m_descriptorSetLayout};
+	vk::DescriptorSetAllocateInfo allocInfo {
+		.descriptorPool = m_descriptorPool,
+		.descriptorSetCount = static_cast<uint32_t>(layouts.size()),
+		.pSetLayouts = layouts.data()
+	};
+	m_descriptorSets = m_device.allocateDescriptorSets(allocInfo);
+
+	for (size_t frameIndex {0}; frameIndex < MAX_FRAMES_IN_FLIGHT; ++frameIndex) {
+		vk::DescriptorBufferInfo bufferInfo {
+			.buffer = m_mvpBuffers[frameIndex], .offset = 0, .range = sizeof(UniformBufferObject)
+		};
+
+		std::vector<vk::DescriptorImageInfo> imageInfos {};
+		assert(textureCount <= 1000);
+		imageInfos.reserve(textureCount);
+		for (const auto& texture: asset.textures) {
+			imageInfos.push_back(
+				{.sampler = m_textureSamplers[texture.samplerIndex.value()],
+				 .imageView = m_textureImageViews[texture.basisuImageIndex.value()],
+				 .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal}
+			);
+		}
+		std::vector<vk::WriteDescriptorSet> descriptorWrites {
+			{.dstSet = m_descriptorSets[frameIndex],
+			 .dstBinding = 0,
+			 .dstArrayElement = 0,
+			 .descriptorCount = 1,
+			 .descriptorType = vk::DescriptorType::eUniformBuffer,
+			 .pBufferInfo = &bufferInfo},
+			{.dstSet = m_descriptorSets[frameIndex],
+			 .dstBinding = 1,
+			 .descriptorCount = textureCount,
+			 .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+			 .pImageInfo = imageInfos.data()}
+		};
+		m_device.updateDescriptorSets(descriptorWrites, {});
+	}
+}
+
+void VulkanInterface::createGraphicsPipeline() {
+	vk::raii::ShaderModule shaderModule {createShaderModule(readFile(SHADER_PATH "/slang.spv"))};
+
+	vk::PipelineShaderStageCreateInfo vertShaderStageInfo {
+		.stage = vk::ShaderStageFlagBits::eVertex, .module = shaderModule, .pName = "vertMain"
+	};
+	vk::PipelineShaderStageCreateInfo fragShaderStageInfo {
+		.stage = vk::ShaderStageFlagBits::eFragment, .module = shaderModule, .pName = "fragMain"
+	};
+	vk::PipelineShaderStageCreateInfo shaderStages[] {vertShaderStageInfo, fragShaderStageInfo};
+
+	auto bindingDescription {Vertex::getBindingDescription()};
+	auto attributeDescriptions {Vertex::getAttributeDescriptions()};
+	vk::PipelineVertexInputStateCreateInfo vertexInputInfo {
+		.vertexBindingDescriptionCount = 1,
+		.pVertexBindingDescriptions = &bindingDescription,
+		.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size()),
+		.pVertexAttributeDescriptions = attributeDescriptions.data()
+	};
+
+	vk::PipelineInputAssemblyStateCreateInfo inputAssembly {
+		.topology = vk::PrimitiveTopology::eTriangleList, .primitiveRestartEnable = vk::False
+	};
+
+	vk::PipelineViewportStateCreateInfo viewportState {.viewportCount = 1, .scissorCount = 1};
+
+	vk::PipelineRasterizationStateCreateInfo rasterizer {
+		.depthClampEnable = vk::False,
+		.rasterizerDiscardEnable = vk::False,
+		.polygonMode = vk::PolygonMode::eFill,
+		.cullMode = vk::CullModeFlagBits::eBack,
+		.frontFace = vk::FrontFace::eCounterClockwise,
+		.depthBiasEnable = vk::False,
+		.lineWidth = 1.0f
+	};
+
+	vk::PipelineMultisampleStateCreateInfo multisampling {
+		.rasterizationSamples = vk::SampleCountFlagBits::e1, .sampleShadingEnable = vk::False
+	};
+
+	vk::PipelineDepthStencilStateCreateInfo depthStencil {
+		.depthTestEnable = vk::True,
+		.depthWriteEnable = vk::True,
+		.depthCompareOp = vk::CompareOp::eLess,
+		.depthBoundsTestEnable = vk::False,
+		.stencilTestEnable = vk::False
+	};
+
+	vk::PipelineColorBlendAttachmentState colorBlendAttachment {
+		.blendEnable = vk::False,
+		.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+						  vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA
+	};
+
+	vk::PipelineColorBlendStateCreateInfo colorBlending {
+		.logicOpEnable = vk::False,
+		.logicOp = vk::LogicOp::eCopy,
+		.attachmentCount = 1,
+		.pAttachments = &colorBlendAttachment
+	};
+
+	std::vector dynamicStates {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
+
+	vk::PipelineDynamicStateCreateInfo dynamicState {
+		.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()),
+		.pDynamicStates = dynamicStates.data()
+	};
+
+	vk::PushConstantRange pushConstantRange {
+		.stageFlags = vk::ShaderStageFlagBits::eFragment, .offset = 0, .size = sizeof(PushConstants)
+	};
+
+	vk::PipelineLayoutCreateInfo pipelineLayoutInfo {
+		.setLayoutCount = 1,
+		.pSetLayouts = &*m_descriptorSetLayout,
+		.pushConstantRangeCount = 1,
+		.pPushConstantRanges = &pushConstantRange
+	};
+
+	m_pipelineLayout = {m_device, pipelineLayoutInfo};
+
+	vk::Format depthFormat {findDepthFormat()};
+
+	vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo>
+		pipelineCreateInfoChain {
+			{.stageCount = 2,
+			 .pStages = shaderStages,
+			 .pVertexInputState = &vertexInputInfo,
+			 .pInputAssemblyState = &inputAssembly,
+			 .pViewportState = &viewportState,
+			 .pRasterizationState = &rasterizer,
+			 .pMultisampleState = &multisampling,
+			 .pDepthStencilState = &depthStencil,
+			 .pColorBlendState = &colorBlending,
+			 .pDynamicState = &dynamicState,
+			 .layout = m_pipelineLayout,
+			 .renderPass = nullptr},
+			{.colorAttachmentCount = 1,
+			 .pColorAttachmentFormats = &m_swapChainSurfaceFormat.format,
+			 .depthAttachmentFormat = depthFormat}
+		};
+	m_graphicsPipeline = {
+		m_device, nullptr, pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>()
+	};
 }
