@@ -11,6 +11,12 @@
             "program": "${command:cmake.launchTargetPath}",
             "args": [],
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Pick Process Attach",
+            "type": "lldb",
+            "request": "attach",
+            "pid": "${command:pickProcess}" // Or pickMyProcess for only processes for the current user.
         }
         
     ]

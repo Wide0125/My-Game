@@ -23,17 +23,23 @@ VulkanInterface::VulkanInterface() {
 void VulkanInterface::initWindow() {
 	glfwInit();
 
-	auto const monitor {glfwGetPrimaryMonitor()};
-	const GLFWvidmode* mode {glfwGetVideoMode(monitor)};
-
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-	glfwWindowHint(GLFW_RED_BITS, mode->redBits);
-	glfwWindowHint(GLFW_GREEN_BITS, mode->greenBits);
-	glfwWindowHint(GLFW_BLUE_BITS, mode->blueBits);
-	glfwWindowHint(GLFW_REFRESH_RATE, mode->refreshRate);
+	glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
-	m_window = glfwCreateWindow(mode->width, mode->height, "My Game", nullptr, NULL);
+	m_window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
+	glfwSetWindowUserPointer(m_window, this);
+
+	// auto const monitor {glfwGetPrimaryMonitor()};
+	// const GLFWvidmode* mode {glfwGetVideoMode(monitor)};
+
+	// glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+	// glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+	// glfwWindowHint(GLFW_RED_BITS, mode->redBits);
+	// glfwWindowHint(GLFW_GREEN_BITS, mode->greenBits);
+	// glfwWindowHint(GLFW_BLUE_BITS, mode->blueBits);
+	// glfwWindowHint(GLFW_REFRESH_RATE, mode->refreshRate);
+
+	// m_window = glfwCreateWindow(mode->width, mode->height, "My Game", monitor, NULL);
 }
 void VulkanInterface::initVulkan() {
 	createInstance();

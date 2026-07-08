@@ -4,6 +4,7 @@
     "blitting",
     "fastgltf",
     "Gltf",
+    "isnan",
     "MESHBUFFERS",
     "MODELINSTANCE",
     "Multisample",

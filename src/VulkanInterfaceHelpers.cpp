@@ -258,7 +258,7 @@ void VulkanInterface::createDescriptorPool() {
 	std::array<vk::DescriptorPoolSize, 2> poolSize {
 		{{.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eCombinedImageSampler,
-		  .descriptorCount = 1000 * MAX_FRAMES_IN_FLIGHT}}
+		  .descriptorCount = MAX_TEXTURES * MAX_FRAMES_IN_FLIGHT}}
 	};
 	vk::DescriptorPoolCreateInfo poolInfo {
 		.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
@@ -277,7 +277,7 @@ VulkanInterface::createDescriptorSetLayout() const {
 		vk::DescriptorSetLayoutBinding(
 			1,
 			vk::DescriptorType::eCombinedImageSampler,
-			1000,
+			MAX_TEXTURES,
 			vk::ShaderStageFlagBits::eFragment,
 			nullptr
 		)

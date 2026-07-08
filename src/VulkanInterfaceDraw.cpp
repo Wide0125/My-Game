@@ -7,12 +7,22 @@
 #include "VulkanInterface.hpp"
 
 void VulkanInterface::drawFrame() {
+	for (const auto* parentNode: m_currentScene->getParentNodes()) {
+		queueDrawModelInstance(*parentNode, glm::identity<glm::mat4>());
+	}
+	m_frameIndex = (m_frameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
+}
+
+void VulkanInterface::queueDrawModelInstance(
+	const ModelInstance& modelInstance, const glm::mat4& globalTransform
+) {
+
 	auto fenceResult =
 		m_device.waitForFences(*m_inFlightFences[m_frameIndex], vk::True, UINT64_MAX);
 	if (fenceResult != vk::Result::eSuccess) {
 		throw std::runtime_error("failed to wait for fence!");
 	}
-	auto [result, m_imageIndex] = m_swapChain.acquireNextImage(
+	auto [result, imageIndex] = m_swapChain.acquireNextImage(
 		UINT64_MAX, *m_presentCompleteSemaphores[m_frameIndex], nullptr
 	);
 	if (result == vk::Result::eErrorOutOfDateKHR) {
@@ -32,7 +42,7 @@ void VulkanInterface::drawFrame() {
 	commandBuffer.begin({});
 	// Before starting rendering, transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL
 	transition_image_layout(
-		m_swapChainImages[m_imageIndex],
+		m_swapChainImages[imageIndex],
 		vk::ImageLayout::eUndefined,
 		vk::ImageLayout::eColorAttachmentOptimal,
 		{}, // srcAccessMask (no need to wait for previous operations)
@@ -59,7 +69,7 @@ void VulkanInterface::drawFrame() {
 	vk::ClearValue clearDepth = vk::ClearDepthStencilValue(1.0f, 0);
 
 	vk::RenderingAttachmentInfo colorAttachmentInfo = {
-		.imageView = m_swapChainImageViews[m_imageIndex],
+		.imageView = m_swapChainImageViews[imageIndex],
 		.imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
 		.loadOp = vk::AttachmentLoadOp::eClear,
 		.storeOp = vk::AttachmentStoreOp::eStore,
@@ -96,53 +106,7 @@ void VulkanInterface::drawFrame() {
 		)
 	);
 	commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), m_swapChainExtent));
-	for (const auto* parentNode: m_currentScene->getParentNodes()) {
-		queueDrawModelInstance(*parentNode, glm::identity<glm::mat4>());
-	}
-	commandBuffer.endRendering();
-	transition_image_layout(
-		m_swapChainImages[m_imageIndex],
-		vk::ImageLayout::eColorAttachmentOptimal,
-		vk::ImageLayout::ePresentSrcKHR,
-		vk::AccessFlagBits2::eColorAttachmentWrite,			// srcAccessMask
-		{},													// dstAccessMask
-		vk::PipelineStageFlagBits2::eColorAttachmentOutput, // srcStage
-		vk::PipelineStageFlagBits2::eBottomOfPipe,			// dstStage
-		vk::ImageAspectFlagBits::eColor
-	);
-	commandBuffer.end();
 
-	vk::PipelineStageFlags waitDestinationStageMask(
-		vk::PipelineStageFlagBits::eColorAttachmentOutput
-	);
-	const vk::SubmitInfo submitInfo {
-		.waitSemaphoreCount = 1,
-		.pWaitSemaphores = &*m_presentCompleteSemaphores[m_frameIndex],
-		.pWaitDstStageMask = &waitDestinationStageMask,
-		.commandBufferCount = 1,
-		.pCommandBuffers = &*m_commandBuffers[m_frameIndex],
-		.signalSemaphoreCount = 1,
-		.pSignalSemaphores = &*m_renderFinishedSemaphores[m_imageIndex]
-	};
-	m_queue.submit(submitInfo, *m_inFlightFences[m_frameIndex]);
-
-	const vk::PresentInfoKHR presentInfoKHR {
-		.waitSemaphoreCount = 1,
-		.pWaitSemaphores = &*m_renderFinishedSemaphores[m_imageIndex],
-		.swapchainCount = 1,
-		.pSwapchains = &*m_swapChain,
-		.pImageIndices = &m_imageIndex
-	};
-	result = m_queue.presentKHR(presentInfoKHR);
-
-	assert(result == vk::Result::eSuccess);
-	m_frameIndex = (m_frameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
-}
-
-void VulkanInterface::queueDrawModelInstance(
-	const ModelInstance& modelInstance, const glm::mat4& globalTransform
-) {
-	auto& commandBuffer {m_commandBuffers[m_frameIndex]};
 	const auto& currMeshBuffers {*modelInstance.mesh};
 
 	// update uniform buffer
@@ -153,7 +117,7 @@ void VulkanInterface::queueDrawModelInstance(
 	};
 	ubo.model = globalTransform * localTransform;
 	ubo.view = lookAt(
-		glm::vec3(0.0f, 1.5f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)
+		glm::vec3(5.0f, 5.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)
 	);
 	ubo.proj = glm::perspective(
 		glm::radians(45.0f),
@@ -187,6 +151,41 @@ void VulkanInterface::queueDrawModelInstance(
 		);
 
 		commandBuffer.drawIndexed(currMeshBuffers.indicesCount, 1, 0, 0, 0);
+		commandBuffer.endRendering();
+		transition_image_layout(
+			m_swapChainImages[imageIndex],
+			vk::ImageLayout::eColorAttachmentOptimal,
+			vk::ImageLayout::ePresentSrcKHR,
+			vk::AccessFlagBits2::eColorAttachmentWrite,			// srcAccessMask
+			{},													// dstAccessMask
+			vk::PipelineStageFlagBits2::eColorAttachmentOutput, // srcStage
+			vk::PipelineStageFlagBits2::eBottomOfPipe,			// dstStage
+			vk::ImageAspectFlagBits::eColor
+		);
+		commandBuffer.end();
+
+		vk::PipelineStageFlags waitDestinationStageMask(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput
+		);
+		const vk::SubmitInfo submitInfo {
+			.waitSemaphoreCount = 1,
+			.pWaitSemaphores = &*m_presentCompleteSemaphores[m_frameIndex],
+			.pWaitDstStageMask = &waitDestinationStageMask,
+			.commandBufferCount = 1,
+			.pCommandBuffers = &*m_commandBuffers[m_frameIndex],
+			.signalSemaphoreCount = 1,
+			.pSignalSemaphores = &*m_renderFinishedSemaphores[imageIndex]
+		};
+		m_queue.submit(submitInfo, *m_inFlightFences[m_frameIndex]);
+
+		const vk::PresentInfoKHR presentInfoKHR {
+			.waitSemaphoreCount = 1,
+			.pWaitSemaphores = &*m_renderFinishedSemaphores[imageIndex],
+			.swapchainCount = 1,
+			.pSwapchains = &*m_swapChain,
+			.pImageIndices = &imageIndex
+		};
+		assert(m_queue.presentKHR(presentInfoKHR) == vk::Result::eSuccess);
 	}
 	for (const auto& childIndex: modelInstance.childIndices) {
 		queueDrawModelInstance(

@@ -53,6 +53,10 @@ class VulkanInterface {
 	}
   private:
 	static constexpr int MAX_FRAMES_IN_FLIGHT {2};
+	static constexpr int MAX_TEXTURES {1000};
+
+	static constexpr int WIDTH {800};
+	static constexpr int HEIGHT {600};
 
 	GLFWwindow* m_window {nullptr}; // GLFW window object
 

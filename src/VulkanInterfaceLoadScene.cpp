@@ -420,7 +420,7 @@ void VulkanInterface::createDescriptorSets(const fastgltf::Asset& asset) {
 		};
 
 		std::vector<vk::DescriptorImageInfo> imageInfos {};
-		assert(textureCount <= 1000);
+		assert(textureCount <= MAX_TEXTURES);
 		imageInfos.reserve(textureCount);
 		for (const auto& texture: asset.textures) {
 			imageInfos.push_back(
