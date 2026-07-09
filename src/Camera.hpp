@@ -3,6 +3,7 @@
 
 #include <numbers>
 #include <shared_mutex>
+#include <mutex>
 
 #include <glm/glm.hpp>
 
