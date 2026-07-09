@@ -15,9 +15,9 @@
 #include <fastgltf/tools.hpp>
 #include <fastgltf/types.hpp>
 
+#include "Camera.hpp"
 #include "ModelInstance.hpp"
 #include "VulkanInterface.hpp"
-#include "Camera.hpp"
 
 class Scene {
   public:
@@ -63,6 +63,7 @@ class Scene {
 	const std::vector<ModelInstance>& getNodes() const { return m_modelInstances; }
 
 	Camera sceneCamera {};
+
   private:
 	std::vector<const ModelInstance*> m_parentModelInstances {};
 	std::vector<ModelInstance> m_modelInstances {};
