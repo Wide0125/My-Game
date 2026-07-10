@@ -29,7 +29,7 @@ void VulkanInterface::initWindow() {
 	// m_window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
 	// glfwSetWindowUserPointer(m_window, this);
 
-	auto const monitor {glfwGetPrimaryMonitor()};
+	const auto monitor {glfwGetPrimaryMonitor()};
 	const GLFWvidmode* mode {glfwGetVideoMode(monitor)};
 
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -38,6 +38,7 @@ void VulkanInterface::initWindow() {
 	glfwWindowHint(GLFW_GREEN_BITS, mode->greenBits);
 	glfwWindowHint(GLFW_BLUE_BITS, mode->blueBits);
 	glfwWindowHint(GLFW_REFRESH_RATE, mode->refreshRate);
+	glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GLFW_TRUE);
 
 	m_window = glfwCreateWindow(mode->width, mode->height, "My Game", monitor, NULL);
 }
@@ -151,10 +152,10 @@ void VulkanInterface::createLogicalDevice() {
 		vk::PhysicalDeviceVulkan13Features,
 		vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>
 		featureChain {
-		{.features = {.samplerAnisotropy = true}}, // vk::PhysicalDeviceFeatures2
-		{
-			// .descriptorBindingPartiallyBound = true,
-			.runtimeDescriptorArray = true},
+			{.features = {.samplerAnisotropy = true}}, // vk::PhysicalDeviceFeatures2
+			{										   // .descriptorBindingPartiallyBound = true,
+			  .runtimeDescriptorArray = true
+			},
 			{.synchronization2 = true,
 			 .dynamicRendering = true},	   // vk::PhysicalDeviceVulkan13Features
 			{.extendedDynamicState = true} // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT

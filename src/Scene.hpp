@@ -16,13 +16,15 @@
 #include <fastgltf/types.hpp>
 
 #include "Camera.hpp"
-#include "ModelInstance.hpp"
+#include "Node.hpp"
 #include "VulkanInterface.hpp"
 
 class Scene {
   public:
 	Scene(const std::string& filename, VulkanInterface& renderer) {
-		static fastgltf::Parser parser {fastgltf::Extensions::KHR_texture_basisu};
+		static fastgltf::Parser parser {
+			fastgltf::Extensions::KHR_texture_basisu | fastgltf::Extensions::KHR_lights_punctual
+		};
 
 		std::filesystem::path path {std::string {SCENE_PATH} + "/" + filename};
 
@@ -47,26 +49,24 @@ class Scene {
 
 		renderer.loadScene(asset.get(), this); // load textures and models onto GPU memory
 
-		m_modelInstances.reserve(renderer.getModelInstanceCount());
+		m_nodes.reserve(asset->nodes.size());
 		for (const auto& node: asset->nodes) {
 			getNode(node, renderer);
 		}
 		m_parentModelInstances.reserve(asset->scenes[0].nodeIndices.size());
 		for (const auto& parentNodeIndex: asset->scenes[0].nodeIndices) {
-			m_parentModelInstances.push_back(&m_modelInstances[parentNodeIndex]);
+			m_parentModelInstances.push_back(m_nodes[parentNodeIndex].get());
 		}
 	}
 
-	const std::vector<const ModelInstance*>& getParentNodes() const {
-		return m_parentModelInstances;
-	}
-	const std::vector<ModelInstance>& getNodes() const { return m_modelInstances; }
+	const std::vector<const Node*>& getParentNodes() const { return m_parentModelInstances; }
+	const std::vector<std::unique_ptr<Node>>& getNodes() const { return m_nodes; }
 
 	Camera sceneCamera {};
 
   private:
-	std::vector<const ModelInstance*> m_parentModelInstances {};
-	std::vector<ModelInstance> m_modelInstances {};
+	std::vector<const Node*> m_parentModelInstances {};
+	std::vector<std::unique_ptr<Node>> m_nodes {};
 
 	void getNode(const fastgltf::Node& node, const VulkanInterface& renderer) {
 		fastgltf::TRS TRS {std::get<fastgltf::TRS>(node.transform)};
@@ -75,15 +75,16 @@ class Scene {
 		glm::vec3 scale {TRS.scale.x(), TRS.scale.y(), TRS.scale.z()};
 		std::vector<size_t> childIndices {node.children.begin(), node.children.end()};
 
+		std::unique_ptr<Node> nodePointer {};
 		if (node.meshIndex.has_value()) {
-			m_modelInstances.push_back(
-				{&renderer.getMeshBuffers(node.meshIndex.value()),
-				 translation,
-				 rotation,
-				 scale,
-				 childIndices}
-			);
-		}
+			nodePointer = std::make_unique<ModelInstance>(ModelInstance {
+				{translation, rotation, scale, childIndices},
+				&renderer.getMeshBuffers(node.meshIndex.value())
+			});
+		} else {
+			nodePointer = std::make_unique<Node>(translation, rotation, scale, childIndices);
+		} // TODO proper light input
+		m_nodes.push_back(std::move(nodePointer));
 	}
 };
 

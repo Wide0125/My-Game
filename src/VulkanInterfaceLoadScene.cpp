@@ -18,14 +18,13 @@
 #include <fastgltf/util.hpp>
 
 #include "Scene.hpp"
-#include "Vertex.hpp"
 #include "VulkanInterface.hpp"
 
 void VulkanInterface::loadScene(const fastgltf::Asset& asset, Scene* scene) {
 	m_currentScene = scene;
 	createTextureImages(asset);
 	createTextureSamplers(asset);
-	loadModels(asset);
+	loadMeshes(asset);
 	createUniformBuffers(asset);
 	createDescriptorSets(asset);
 	createGraphicsPipeline();
@@ -226,7 +225,7 @@ void VulkanInterface::createTextureSamplers(const fastgltf::Asset& asset) {
 	}
 }
 
-void VulkanInterface::loadModels(const fastgltf::Asset& asset) {
+void VulkanInterface::loadMeshes(const fastgltf::Asset& asset) {
 	destroyMeshes();
 	m_meshes.reserve(asset.meshes.size());
 	for (const auto& mesh: asset.meshes) {
@@ -390,6 +389,9 @@ void VulkanInterface::createUniformBuffers(const fastgltf::Asset& asset) {
 		if (node.meshIndex.has_value()) {
 			++nodeCount;
 		}
+		if (node.lightIndex.has_value()) {
+			++m_lightCount;
+		}
 	}
 	for (size_t frameInFlight {0}; frameInFlight < MAX_FRAMES_IN_FLIGHT; ++frameInFlight) {
 		std::vector<vk::raii::Buffer> mvpBuffers {};
@@ -398,7 +400,7 @@ void VulkanInterface::createUniformBuffers(const fastgltf::Asset& asset) {
 		mvpBuffers.reserve(nodeCount);
 		mvpAllocations.reserve(nodeCount);
 		for (size_t nodeIndex {0}; nodeIndex < nodeCount; ++nodeIndex) {
-			vk::DeviceSize bufferSize {sizeof(UniformBufferObject)};
+			vk::DeviceSize bufferSize {sizeof(MVPBufferObject)};
 			vk::raii::Buffer mvpBuffer {nullptr};
 			VmaAllocation mvpAllocation {};
 
@@ -415,6 +417,15 @@ void VulkanInterface::createUniformBuffers(const fastgltf::Asset& asset) {
 		}
 		m_mvpBuffers[frameInFlight] = std::move(mvpBuffers);
 		m_mvpAllocations[frameInFlight] = std::move(mvpAllocations);
+
+		vk::DeviceSize bufferSize {sizeof(LightBufferObject) * m_lightCount};
+		createBuffer(
+			bufferSize,
+			vk::BufferUsageFlagBits::eUniformBuffer,
+			VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+			m_lightBuffers[frameInFlight],
+			m_lightAllocations[frameInFlight]
+		);
 	}
 }
 
@@ -432,13 +443,11 @@ void VulkanInterface::createDescriptorSets(const fastgltf::Asset& asset) {
 	m_descriptorSets = m_device.allocateDescriptorSets(allocInfo);
 
 	for (size_t frameIndex {0}; frameIndex < MAX_FRAMES_IN_FLIGHT; ++frameIndex) {
-		std::vector<vk::DescriptorBufferInfo> bufferInfos {
-			// .buffer = m_mvpBuffers[frameIndex], .offset = 0, .range = sizeof(UniformBufferObject)
-		};
-		bufferInfos.reserve(nodeCount);
+		std::vector<vk::DescriptorBufferInfo> MVPBufferInfos {};
+		MVPBufferInfos.reserve(nodeCount);
 		for (int nodeIndex {0}; nodeIndex < nodeCount; ++nodeIndex) {
-			bufferInfos.emplace_back(
-				m_mvpBuffers[frameIndex][nodeIndex], 0, sizeof(UniformBufferObject)
+			MVPBufferInfos.emplace_back(
+				m_mvpBuffers[frameIndex][nodeIndex], 0, sizeof(MVPBufferObject)
 			);
 		}
 
@@ -452,17 +461,26 @@ void VulkanInterface::createDescriptorSets(const fastgltf::Asset& asset) {
 				 .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal}
 			);
 		}
+
+		vk::DescriptorBufferInfo lightBufferInfo {
+			m_lightBuffers[frameIndex], 0, sizeof(LightBufferObject) * m_lightCount
+		};
 		std::vector<vk::WriteDescriptorSet> descriptorWrites {
 			{.dstSet = m_descriptorSets[frameIndex],
 			 .dstBinding = 0,
 			 .descriptorCount = nodeCount,
 			 .descriptorType = vk::DescriptorType::eUniformBuffer,
-			 .pBufferInfo = bufferInfos.data()},
+			 .pBufferInfo = MVPBufferInfos.data()},
 			{.dstSet = m_descriptorSets[frameIndex],
 			 .dstBinding = 1,
 			 .descriptorCount = textureCount,
 			 .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-			 .pImageInfo = imageInfos.data()}
+			 .pImageInfo = imageInfos.data()},
+			{.dstSet = m_descriptorSets[frameIndex],
+			 .dstBinding = 2,
+			 .descriptorCount = static_cast<uint32_t>(m_lightCount),
+			 .descriptorType = vk::DescriptorType::eUniformBuffer,
+			 .pBufferInfo = &lightBufferInfo}
 		};
 		m_device.updateDescriptorSets(descriptorWrites, {});
 	}

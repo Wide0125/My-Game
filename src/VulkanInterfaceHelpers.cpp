@@ -186,53 +186,6 @@ void VulkanInterface::endSingleTimeCommands(const vk::raii::CommandBuffer& comma
 }
 
 // loadScene helper functions
-void VulkanInterface::transitionImageLayout(
-	const vk::raii::Image& image,
-	const vk::ImageLayout oldLayout,
-	const vk::ImageLayout newLayout,
-	uint32_t mipLevels
-) const {
-	const auto commandBuffer {beginSingleTimeCommands()};
-
-	vk::ImageMemoryBarrier barrier {
-		.oldLayout = oldLayout,
-		.newLayout = newLayout,
-		.image = image,
-		.subresourceRange = {
-			.aspectMask = vk::ImageAspectFlagBits::eColor,
-			.baseMipLevel = 0,
-			.levelCount = mipLevels,
-			.baseArrayLayer = 0,
-			.layerCount = 1
-		}
-	};
-
-	vk::PipelineStageFlags sourceStage {};
-	vk::PipelineStageFlags destinationStage {};
-
-	if (oldLayout == vk::ImageLayout::eUndefined and
-		newLayout == vk::ImageLayout::eTransferDstOptimal) {
-		barrier.srcAccessMask = {};
-		barrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
-
-		sourceStage = vk::PipelineStageFlagBits::eTopOfPipe;
-		destinationStage = vk::PipelineStageFlagBits::eTransfer;
-	} else if (
-		oldLayout == vk::ImageLayout::eTransferDstOptimal and
-		newLayout == vk::ImageLayout::eShaderReadOnlyOptimal) {
-		barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
-		barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
-
-		sourceStage = vk::PipelineStageFlagBits::eTransfer;
-		destinationStage = vk::PipelineStageFlagBits::eFragmentShader;
-	} else {
-		throw std::invalid_argument("unsupported layout transition!");
-	}
-
-	commandBuffer->pipelineBarrier(sourceStage, destinationStage, {}, {}, nullptr, barrier);
-	endSingleTimeCommands(*commandBuffer);
-} // currently unused, staged for deletion
-
 void VulkanInterface::copyBuffer(
 	vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuffer, vk::DeviceSize size
 ) const {
@@ -255,10 +208,13 @@ void VulkanInterface::copyBuffer(
 }
 
 void VulkanInterface::createDescriptorPool(uint32_t nodeCount, uint32_t textureCount) {
-	std::array<vk::DescriptorPoolSize, 2> poolSize {
-		{{.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = nodeCount * MAX_FRAMES_IN_FLIGHT},
+	std::array<vk::DescriptorPoolSize, 3> poolSize {
+		{{.type = vk::DescriptorType::eUniformBuffer,
+		  .descriptorCount = nodeCount * MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eCombinedImageSampler,
-		  .descriptorCount = textureCount * MAX_FRAMES_IN_FLIGHT}}
+		  .descriptorCount = textureCount * MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eUniformBuffer,
+		  .descriptorCount = static_cast<uint32_t>(m_lightCount * MAX_FRAMES_IN_FLIGHT)}}
 	};
 	vk::DescriptorPoolCreateInfo poolInfo {
 		.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
@@ -271,27 +227,30 @@ void VulkanInterface::createDescriptorPool(uint32_t nodeCount, uint32_t textureC
 vk::raii::DescriptorSetLayout
 VulkanInterface::createDescriptorSetLayout(uint32_t nodeCount, uint32_t textureCount) const {
 	std::array bindings {
-		vk::DescriptorSetLayoutBinding(
-			0, vk::DescriptorType::eUniformBuffer, nodeCount, vk::ShaderStageFlagBits::eVertex, nullptr
-		),
-		vk::DescriptorSetLayoutBinding(
+		vk::DescriptorSetLayoutBinding {
+			0,
+			vk::DescriptorType::eUniformBuffer,
+			nodeCount,
+			vk::ShaderStageFlagBits::eVertex,
+			nullptr
+		},
+		vk::DescriptorSetLayoutBinding {
 			1,
 			vk::DescriptorType::eCombinedImageSampler,
 			textureCount,
 			vk::ShaderStageFlagBits::eFragment,
 			nullptr
-		)
+		},
+		vk::DescriptorSetLayoutBinding {
+			2,
+			vk::DescriptorType::eUniformBuffer,
+			static_cast<uint32_t>(m_lightCount),
+			vk::ShaderStageFlagBits::eFragment,
+			nullptr
+		}
 	};
-	// std::array<vk::DescriptorBindingFlags, 2> bindingFlags {
-	// 	{vk::DescriptorBindingFlags {}, vk::DescriptorBindingFlagBits::ePartiallyBound}
-	// };
-	// vk::DescriptorSetLayoutBindingFlagsCreateInfo bindingInfo {
-	// 	.pBindingFlags = bindingFlags.data()
-	// };
 	vk::DescriptorSetLayoutCreateInfo layoutInfo {
-		// .pNext = &bindingInfo,
-		.bindingCount = static_cast<uint32_t>(bindings.size()),
-		.pBindings = bindings.data()
+		.bindingCount = static_cast<uint32_t>(bindings.size()), .pBindings = bindings.data()
 	};
 	return {m_device, layoutInfo};
 }

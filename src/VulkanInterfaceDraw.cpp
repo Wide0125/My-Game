@@ -84,6 +84,13 @@ void VulkanInterface::drawFrame() {
 
 	commandBuffer.beginRendering(renderingInfo);
 	commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *m_graphicsPipeline);
+	commandBuffer.bindDescriptorSets(
+		vk::PipelineBindPoint::eGraphics,
+		m_pipelineLayout,
+		0,
+		*m_descriptorSets[m_frameIndex],
+		nullptr
+	);
 	commandBuffer.setViewport(
 		0,
 		vk::Viewport(
@@ -97,10 +104,19 @@ void VulkanInterface::drawFrame() {
 	);
 	commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), m_swapChainExtent));
 
+	std::vector<LightBufferObject> lights {};
+	lights.reserve(m_lightCount);
+	for (const auto& parentNode: m_currentScene->getParentNodes()) {
+		
+	}
+
 	uint32_t modelInstanceNum {0};
-	for (const auto* parentNode: m_currentScene->getParentNodes()) {
-		queueDrawModelInstance(*parentNode, glm::identity<glm::mat4>(), modelInstanceNum);
-		++modelInstanceNum;
+	for (const auto& parentNode: m_currentScene->getParentNodes()) { // draw models
+		const ModelInstance* modelInstancePtr {dynamic_cast<const ModelInstance*>(parentNode)};
+		if (modelInstancePtr != nullptr) {
+			queueDrawModelInstance(modelInstancePtr, glm::identity<glm::mat4>(), modelInstanceNum);
+			++modelInstanceNum;
+		}
 	}
 
 	commandBuffer.endRendering();
@@ -147,70 +163,67 @@ void VulkanInterface::drawFrame() {
 }
 
 void VulkanInterface::queueDrawModelInstance(
-	const ModelInstance& modelInstance, const glm::mat4& globalTransform, uint32_t& modelInstanceNum
+	const ModelInstance* modelInstance, const glm::mat4& globalTransform, uint32_t& modelInstanceNum
 ) {
 
-	const auto& currMeshBuffers {*modelInstance.mesh};
+	const auto& currMeshBuffers {*modelInstance->mesh};
 
 	// update uniform buffer
-	UniformBufferObject ubo {};
+	MVPBufferObject ubo {};
 	glm::mat4 localTransform {
-		glm::translate(modelInstance.position) * glm::toMat4(modelInstance.rotation) *
-		glm::scale(modelInstance.scale)
+		glm::translate(modelInstance->position) * glm::toMat4(modelInstance->rotation) *
+		glm::scale(modelInstance->scale)
 	};
-	ubo.model = globalTransform * localTransform;
-	const glm::vec3& cameraPosition {m_currentScene->sceneCamera.getCameraPosition()};
-	const auto up {m_currentScene->sceneCamera.getUp()};
-	ubo.view = lookAt(
-		cameraPosition,
-		cameraPosition + m_currentScene->sceneCamera.getLookAtVector(),
-		m_currentScene->sceneCamera.getUp()
-	);
-	ubo.proj = glm::perspective(
-		glm::radians(45.0f),
-		static_cast<float>(m_swapChainExtent.width) / static_cast<float>(m_swapChainExtent.height),
-		0.1f,
-		100.0f
-	);
-	ubo.proj[1][1] *= -1;
 
-	vmaCopyMemoryToAllocation(
-		m_allocator, &ubo, m_mvpAllocations[m_frameIndex][modelInstanceNum], 0, sizeof(ubo)
-	);
+	if (modelInstance != nullptr) {
+		ubo.model = globalTransform * localTransform;
+		const glm::vec3& cameraPosition {m_currentScene->sceneCamera.getCameraPosition()};
+		const auto up {m_currentScene->sceneCamera.getUp()};
+		ubo.view = lookAt(
+			cameraPosition,
+			cameraPosition + m_currentScene->sceneCamera.getLookAtVector(),
+			m_currentScene->sceneCamera.getUp()
+		);
+		ubo.proj = glm::perspective(
+			glm::radians(45.0f),
+			static_cast<float>(m_swapChainExtent.width) /
+				static_cast<float>(m_swapChainExtent.height),
+			0.1f,
+			100.0f
+		);
+		ubo.proj[1][1] *= -1;
 
-	auto& commandBuffer {m_commandBuffers[m_frameIndex]};
-	commandBuffer.bindVertexBuffers(0, *currMeshBuffers.vertexBuffer, {0});
-	commandBuffer.bindDescriptorSets(
-		vk::PipelineBindPoint::eGraphics,
-		m_pipelineLayout,
-		0,
-		*m_descriptorSets[m_frameIndex],
-		nullptr
-	);
-	for (
-		size_t primitiveIndex {}; primitiveIndex < currMeshBuffers.indexBuffers.size();
-		++primitiveIndex
-	) {
-		commandBuffer.bindIndexBuffer(
-			currMeshBuffers.indexBuffers[primitiveIndex], 0, vk::IndexType::eUint32
+		vmaCopyMemoryToAllocation(
+			m_allocator, &ubo, m_mvpAllocations[m_frameIndex][modelInstanceNum], 0, sizeof(ubo)
 		);
 
-		PushConstants matrixTextureIndices {
-			modelInstanceNum, currMeshBuffers.textureIndices[primitiveIndex]
-		};
-		commandBuffer.pushConstants<PushConstants>(
-			m_pipelineLayout,
-			vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
-			0,
-			matrixTextureIndices
-		);
+		auto& commandBuffer {m_commandBuffers[m_frameIndex]};
+		commandBuffer.bindVertexBuffers(0, *currMeshBuffers.vertexBuffer, {0});
+		for (
+			size_t primitiveIndex {}; primitiveIndex < currMeshBuffers.indexBuffers.size();
+			++primitiveIndex
+		) {
+			commandBuffer.bindIndexBuffer(
+				currMeshBuffers.indexBuffers[primitiveIndex], 0, vk::IndexType::eUint32
+			);
 
-		commandBuffer.drawIndexed(currMeshBuffers.indicesCount, 1, 0, 0, 0);
+			PushConstants matrixTextureIndices {
+				modelInstanceNum, currMeshBuffers.textureIndices[primitiveIndex]
+			};
+			commandBuffer.pushConstants<PushConstants>(
+				m_pipelineLayout,
+				vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+				0,
+				matrixTextureIndices
+			);
+
+			commandBuffer.drawIndexed(currMeshBuffers.indicesCount, 1, 0, 0, 0);
+		}
 	}
-	for (const auto& childIndex: modelInstance.childIndices) {
+	for (auto& childIndex: modelInstance->childIndices) {
 		++modelInstanceNum;
 		queueDrawModelInstance(
-			m_currentScene->getNodes()[childIndex],
+			dynamic_cast<ModelInstance*>(m_currentScene->getNodes()[childIndex].get()),
 			globalTransform * localTransform,
 			modelInstanceNum
 		);

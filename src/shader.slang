@@ -5,13 +5,19 @@ struct VSInput {
     float2 inTexCoord;
 };
 
-struct UniformBuffer {
+struct MVPBuffer {
     float4x4 model;
     float4x4 view;
     float4x4 proj;
 };
 
-
+struct LightBuffer {
+	enum LightType { directional, point, spot };
+	LightType type;
+	float3 color;
+	float intensity;
+	float range;
+};
 
 struct VSOutput
 {
@@ -26,13 +32,13 @@ struct PushData {
 };
 [[vk::push_constant]] ConstantBuffer<PushData> pushData;
 
-[[vk::binding(0, 0)]] ConstantBuffer<UniformBuffer>[] ubo;
+[[vk::binding(0, 0)]] ConstantBuffer<MVPBuffer>[] mvp;
 [shader("vertex")]
 VSOutput vertMain(VSInput input) {
     VSOutput output;
     // float4 worldPos = mul(ubo.model, float4(input.inPosition, 1.0));
     // printf("world pos: %f, %f, %f\n", worldPos.x, worldPos.y, worldPos.z);
-    output.pos = mul(ubo[pushData.matrixIndex].proj, mul(ubo[pushData.matrixIndex].view, mul(ubo[pushData.matrixIndex].model, float4(input.inPosition, 1.0))));
+    output.pos = mul(mvp[pushData.matrixIndex].proj, mul(mvp[pushData.matrixIndex].view, mul(mvp[pushData.matrixIndex].model, float4(input.inPosition, 1.0))));
     // printf("clip pos: %f, %f, %f, %f\n", output.pos.x, output.pos.y, output.pos.z, output.pos.w);
     output.fragColor = input.inColor;
     output.fragTexCoord = input.inTexCoord;

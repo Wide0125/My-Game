@@ -18,11 +18,11 @@ import vulkan_hpp;
 #include "fastgltf/types.hpp"
 
 #include "MeshBuffers.hpp"
-#include "ModelInstance.hpp"
+#include "Node.hpp"
 
 class Scene;
 
-struct UniformBufferObject {
+struct MVPBufferObject {
 	alignas(16) glm::mat4 model;
 	alignas(16) glm::mat4 view;
 	alignas(16) glm::mat4 proj;
@@ -33,12 +33,54 @@ struct PushConstants {
 	uint32_t textureIndex;
 };
 
+struct Vertex {
+	glm::vec3 pos;
+	glm::vec3 normal;
+	glm::vec3 color;
+	glm::vec2 texCoord;
+
+	// Binding and attribute descriptions for Vulkan
+	static vk::VertexInputBindingDescription getBindingDescription() {
+		return {0, sizeof(Vertex), vk::VertexInputRate::eVertex};
+	}
+
+	static std::array<vk::VertexInputAttributeDescription, 4> getAttributeDescriptions() {
+		return {
+			vk::VertexInputAttributeDescription(
+				0, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, pos)
+			),
+			vk::VertexInputAttributeDescription(
+				1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, normal)
+			),
+			vk::VertexInputAttributeDescription(
+				2, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, color)
+			),
+			vk::VertexInputAttributeDescription(
+				3, 0, vk::Format::eR32G32Sfloat, offsetof(Vertex, texCoord)
+			)
+		};
+	}
+
+	// Equality operator and hash function for vertex deduplication
+	bool operator==(const Vertex& other) const {
+		return pos == other.pos && normal == other.normal && color == other.color &&
+			   texCoord == other.texCoord;
+	}
+};
+
+struct LightBufferObject {
+	enum LightType { directional, point, spot };
+	LightType type {};
+	glm::vec3 color {};
+	float intensity {};
+	float range {};
+};
+
 class VulkanInterface {
   public:
 	VulkanInterface();
 	~VulkanInterface() { cleanup(); }
-	void
-	loadScene(const fastgltf::Asset& asset, Scene* scene); // load gltf information onto GPU
+	void loadScene(const fastgltf::Asset& asset, Scene* scene); // load gltf information onto GPU
 
 	void waitIdle() { m_device.waitIdle(); }
 
@@ -118,8 +160,12 @@ class VulkanInterface {
 	std::vector<vk::raii::ImageView> m_textureImageViews {};
 	std::vector<vk::raii::Sampler> m_textureSamplers {};
 
-	std::array<std::vector<vk::raii::Buffer>, 2> m_mvpBuffers {};
-	std::array<std::vector<VmaAllocation>, 2> m_mvpAllocations {};
+	std::array<std::vector<vk::raii::Buffer>, MAX_FRAMES_IN_FLIGHT> m_mvpBuffers {};
+	std::array<std::vector<VmaAllocation>, MAX_FRAMES_IN_FLIGHT> m_mvpAllocations {};
+
+	std::array<vk::raii::Buffer, MAX_FRAMES_IN_FLIGHT> m_lightBuffers {{{nullptr}, {nullptr}}};
+	std::array<VmaAllocation, MAX_FRAMES_IN_FLIGHT> m_lightAllocations {};
+	int m_lightCount {0};
 
 	vk::raii::DescriptorSetLayout m_descriptorSetLayout {nullptr};
 	vk::raii::DescriptorPool m_descriptorPool {nullptr};
@@ -213,7 +259,7 @@ class VulkanInterface {
 
 	void
 	copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuffer, vk::DeviceSize size) const;
-	void loadModels(const fastgltf::Asset&);
+	void loadMeshes(const fastgltf::Asset&);
 
 	void createUniformBuffers(const fastgltf::Asset&);
 
@@ -241,7 +287,7 @@ class VulkanInterface {
 	);
 	void recreateSwapChain();
 	void updateUniformBuffer(const ModelInstance&, const glm::mat4&);
-	void queueDrawModelInstance(const ModelInstance&, const glm::mat4&, uint32_t&);
+	void queueDrawModelInstance(const ModelInstance*, const glm::mat4&, uint32_t&);
 };
 
 #endif // !VULKANINTERFACE_HPP
