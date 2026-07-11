@@ -1,5 +1,6 @@
 #include <fstream>
 
+#include "Scene.hpp"
 #include "VulkanInterface.hpp"
 
 // initVulkan helper functions
@@ -141,7 +142,7 @@ void VulkanInterface::createImage(
 void VulkanInterface::createBuffer(
 	vk::DeviceSize size,
 	vk::BufferUsageFlags usage,
-	VmaAllocationCreateFlagBits allocFlags,
+	VmaAllocationCreateFlags allocFlags,
 	vk::raii::Buffer& buffer,
 	VmaAllocation& allocation
 ) const {
@@ -207,14 +208,13 @@ void VulkanInterface::copyBuffer(
 	m_queue.waitIdle();
 }
 
-void VulkanInterface::createDescriptorPool(uint32_t nodeCount, uint32_t textureCount) {
-	std::array<vk::DescriptorPoolSize, 3> poolSize {
-		{{.type = vk::DescriptorType::eUniformBuffer,
-		  .descriptorCount = nodeCount * MAX_FRAMES_IN_FLIGHT},
+void VulkanInterface::createDescriptorPool(uint32_t textureCount) {
+	std::array<vk::DescriptorPoolSize, 4> poolSize {
+		{{.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eCombinedImageSampler,
 		  .descriptorCount = textureCount * MAX_FRAMES_IN_FLIGHT},
-		 {.type = vk::DescriptorType::eUniformBuffer,
-		  .descriptorCount = static_cast<uint32_t>(m_lightCount * MAX_FRAMES_IN_FLIGHT)}}
+		 {.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT}}
 	};
 	vk::DescriptorPoolCreateInfo poolInfo {
 		.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
@@ -225,29 +225,17 @@ void VulkanInterface::createDescriptorPool(uint32_t nodeCount, uint32_t textureC
 	m_descriptorPool = {m_device, poolInfo};
 }
 vk::raii::DescriptorSetLayout
-VulkanInterface::createDescriptorSetLayout(uint32_t nodeCount, uint32_t textureCount) const {
-	std::array bindings {
-		vk::DescriptorSetLayoutBinding {
-			0,
-			vk::DescriptorType::eUniformBuffer,
-			nodeCount,
-			vk::ShaderStageFlagBits::eVertex,
-			nullptr
-		},
-		vk::DescriptorSetLayoutBinding {
-			1,
-			vk::DescriptorType::eCombinedImageSampler,
-			textureCount,
-			vk::ShaderStageFlagBits::eFragment,
-			nullptr
-		},
-		vk::DescriptorSetLayoutBinding {
-			2,
-			vk::DescriptorType::eUniformBuffer,
-			static_cast<uint32_t>(m_lightCount),
-			vk::ShaderStageFlagBits::eFragment,
-			nullptr
-		}
+VulkanInterface::createDescriptorSetLayout(uint32_t textureCount) const {
+	std::array<vk::DescriptorSetLayoutBinding, 4> bindings {
+		{{0, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr},
+		 {1, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr},
+
+		 {2,
+		  vk::DescriptorType::eCombinedImageSampler,
+		  textureCount,
+		  vk::ShaderStageFlagBits::eFragment,
+		  nullptr},
+		 {3, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eFragment, nullptr}}
 	};
 	vk::DescriptorSetLayoutCreateInfo layoutInfo {
 		.bindingCount = static_cast<uint32_t>(bindings.size()), .pBindings = bindings.data()

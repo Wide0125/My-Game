@@ -10,6 +10,8 @@
 #include "Scene.hpp"
 #include "VulkanInterface.hpp"
 
+
+
 int main() {
 	VulkanInterface renderer {};
 	std::unique_ptr<Scene> currentScene {std::make_unique<Scene>("Scene1.glb", renderer)};
@@ -30,12 +32,16 @@ int main() {
 		if (state == GLFW_PRESS) {
 			camera.moveCameraPosition(-0.1f * camera.getLookAtVector());
 		}
+		state = glfwGetKey(window, GLFW_KEY_ESCAPE);
+		if (state == GLFW_PRESS) {
+			break;
+		}
 
 		double xPos, yPos;
 		glfwGetCursorPos(window, &xPos, &yPos);
 		camera.moveCameraGaze(
-			{static_cast<float>(xPos - prevXPos) * -0.005,
-			 static_cast<float>(yPos - prevYPos) * -0.005}
+			{static_cast<float>(xPos - prevXPos) * -0.004,
+			 static_cast<float>(yPos - prevYPos) * -0.004}
 		);
 		prevXPos = xPos;
 		prevYPos = yPos;

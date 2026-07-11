@@ -26,6 +26,8 @@ void VulkanInterface::drawFrame() {
 
 	m_device.resetFences(*m_inFlightFences[m_frameIndex]); // check fences
 
+	m_currentScene->propagateUpdates();
+
 	auto& commandBuffer {m_commandBuffers[m_frameIndex]}; // per-draw commands
 
 	commandBuffer.reset();
@@ -104,18 +106,73 @@ void VulkanInterface::drawFrame() {
 	);
 	commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), m_swapChainExtent));
 
-	std::vector<LightBufferObject> lights {};
-	lights.reserve(m_lightCount);
-	for (const auto& parentNode: m_currentScene->getParentNodes()) {
-		
-	}
+	Camera& sceneCamera {m_currentScene->sceneCamera};
+	VPTransformBufferObject vpTransform {
+		lookAt(
+			sceneCamera.getCameraPosition(),
+			sceneCamera.getCameraPosition() + sceneCamera.getLookAtVector(),
+			sceneCamera.getUp()
+		),
+		glm::perspective(
+			glm::radians(45.0f),
+			static_cast<float>(m_swapChainExtent.width) /
+				static_cast<float>(m_swapChainExtent.height),
+			0.1f,
+			100.0f
+		)
+	};
+	vpTransform.projectionTransform[1][1] *= -1;
+	vmaCopyMemoryToAllocation(
+		m_allocator, &vpTransform, m_vpTransformAllocations[m_frameIndex], 0, sizeof(vpTransform)
+	);
 
-	uint32_t modelInstanceNum {0};
-	for (const auto& parentNode: m_currentScene->getParentNodes()) { // draw models
-		const ModelInstance* modelInstancePtr {dynamic_cast<const ModelInstance*>(parentNode)};
-		if (modelInstancePtr != nullptr) {
-			queueDrawModelInstance(modelInstancePtr, glm::identity<glm::mat4>(), modelInstanceNum);
-			++modelInstanceNum;
+	vmaCopyMemoryToAllocation(
+		m_allocator,
+		m_currentScene->getLights().data(),
+		m_lightAllocations[m_frameIndex],
+		0,
+		m_currentScene->getLights().size() * sizeof(LightBufferObject)
+	);
+
+	const std::vector<ModelTransformBufferObject>& modelTransforms {
+		m_currentScene->getModelInstanceTransforms()
+	};
+	vmaCopyMemoryToAllocation(
+		m_allocator,
+		modelTransforms.data(),
+		m_modelTransformAllocations[m_frameIndex],
+		0,
+		sizeof(ModelTransformBufferObject) * modelTransforms.size()
+	);
+
+	uint32_t offset {0};
+	for (uint32_t meshIndex {0}; meshIndex < m_currentScene->getModelInstancesPerMesh().size(); ++meshIndex) {
+		auto& commandBuffer {m_commandBuffers[m_frameIndex]};
+		const MeshBuffers& currMeshBuffers {m_meshes[meshIndex]};
+		commandBuffer.bindVertexBuffers(0, *currMeshBuffers.vertexBuffer, {0});
+		for (
+			size_t primitiveIndex {}; primitiveIndex < currMeshBuffers.indexBuffers.size();
+			++primitiveIndex
+		) {
+			commandBuffer.bindIndexBuffer(
+				currMeshBuffers.indexBuffers[primitiveIndex], 0, vk::IndexType::eUint32
+			);
+			PushConstants matrixTextureIndices {meshIndex};
+			commandBuffer.pushConstants<PushConstants>(
+				m_pipelineLayout,
+				vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+				0,
+				matrixTextureIndices
+			);
+
+			commandBuffer.drawIndexed(
+				currMeshBuffers.indicesCount,
+				m_currentScene->getModelInstancesPerMesh()[meshIndex],
+				0,
+				0,
+				offset
+			);
+			offset += m_currentScene->getModelInstancesPerMesh()[meshIndex];
 		}
 	}
 
@@ -160,72 +217,4 @@ void VulkanInterface::drawFrame() {
 	}
 
 	m_frameIndex = (m_frameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
-}
-
-void VulkanInterface::queueDrawModelInstance(
-	const ModelInstance* modelInstance, const glm::mat4& globalTransform, uint32_t& modelInstanceNum
-) {
-
-	const auto& currMeshBuffers {*modelInstance->mesh};
-
-	// update uniform buffer
-	MVPBufferObject ubo {};
-	glm::mat4 localTransform {
-		glm::translate(modelInstance->position) * glm::toMat4(modelInstance->rotation) *
-		glm::scale(modelInstance->scale)
-	};
-
-	if (modelInstance != nullptr) {
-		ubo.model = globalTransform * localTransform;
-		const glm::vec3& cameraPosition {m_currentScene->sceneCamera.getCameraPosition()};
-		const auto up {m_currentScene->sceneCamera.getUp()};
-		ubo.view = lookAt(
-			cameraPosition,
-			cameraPosition + m_currentScene->sceneCamera.getLookAtVector(),
-			m_currentScene->sceneCamera.getUp()
-		);
-		ubo.proj = glm::perspective(
-			glm::radians(45.0f),
-			static_cast<float>(m_swapChainExtent.width) /
-				static_cast<float>(m_swapChainExtent.height),
-			0.1f,
-			100.0f
-		);
-		ubo.proj[1][1] *= -1;
-
-		vmaCopyMemoryToAllocation(
-			m_allocator, &ubo, m_mvpAllocations[m_frameIndex][modelInstanceNum], 0, sizeof(ubo)
-		);
-
-		auto& commandBuffer {m_commandBuffers[m_frameIndex]};
-		commandBuffer.bindVertexBuffers(0, *currMeshBuffers.vertexBuffer, {0});
-		for (
-			size_t primitiveIndex {}; primitiveIndex < currMeshBuffers.indexBuffers.size();
-			++primitiveIndex
-		) {
-			commandBuffer.bindIndexBuffer(
-				currMeshBuffers.indexBuffers[primitiveIndex], 0, vk::IndexType::eUint32
-			);
-
-			PushConstants matrixTextureIndices {
-				modelInstanceNum, currMeshBuffers.textureIndices[primitiveIndex]
-			};
-			commandBuffer.pushConstants<PushConstants>(
-				m_pipelineLayout,
-				vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
-				0,
-				matrixTextureIndices
-			);
-
-			commandBuffer.drawIndexed(currMeshBuffers.indicesCount, 1, 0, 0, 0);
-		}
-	}
-	for (auto& childIndex: modelInstance->childIndices) {
-		++modelInstanceNum;
-		queueDrawModelInstance(
-			dynamic_cast<ModelInstance*>(m_currentScene->getNodes()[childIndex].get()),
-			globalTransform * localTransform,
-			modelInstanceNum
-		);
-	}
 }

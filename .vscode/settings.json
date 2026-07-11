@@ -3,6 +3,7 @@
     "basisu",
     "blitting",
     "fastgltf",
+    "fmat",
     "Gltf",
     "isnan",
     "MESHBUFFERS",

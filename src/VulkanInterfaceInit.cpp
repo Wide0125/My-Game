@@ -40,7 +40,7 @@ void VulkanInterface::initWindow() {
 	glfwWindowHint(GLFW_REFRESH_RATE, mode->refreshRate);
 	glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GLFW_TRUE);
 
-	m_window = glfwCreateWindow(mode->width, mode->height, "My Game", monitor, NULL);
+	m_window = glfwCreateWindow(mode->width, mode->height, "My Game", nullptr, NULL);
 }
 void VulkanInterface::initVulkan() {
 	createInstance();

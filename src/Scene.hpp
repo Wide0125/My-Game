@@ -4,11 +4,13 @@
 #include <cassert>
 #include <filesystem>
 #include <format>
+#include <queue>
 #include <stdexcept>
 
 #include <glm/gtc/quaternion.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
+#include <glm/gtx/transform.hpp>
 
 #include <fastgltf/core.hpp>
 #include <fastgltf/glm_element_traits.hpp>
@@ -47,44 +49,188 @@ class Scene {
 			);
 		}
 
-		renderer.loadScene(asset.get(), this); // load textures and models onto GPU memory
-
 		m_nodes.reserve(asset->nodes.size());
-		for (const auto& node: asset->nodes) {
-			getNode(node, renderer);
+		m_modelInstancesPerMesh.resize(asset->meshes.size());
+		m_modelInstanceTransforms.reserve(
+			std::ranges::fold_left(m_modelInstancesPerMesh, 0, std::plus {})
+		);
+		auto flattenQueue {getNodes(asset.get())};
+		for (const auto& mesh: flattenQueue) {
+			for (auto modelInstanceIndex: mesh) {
+				m_modelInstanceTransforms.push_back({});
+				m_nodes[modelInstanceIndex].modelInstanceIndex = m_modelInstanceTransforms.size() - 1;
+			}
 		}
-		m_parentModelInstances.reserve(asset->scenes[0].nodeIndices.size());
+
+		m_parentNodes.reserve(asset->scenes[0].nodeIndices.size());
 		for (const auto& parentNodeIndex: asset->scenes[0].nodeIndices) {
-			m_parentModelInstances.push_back(m_nodes[parentNodeIndex].get());
+			m_parentNodes.push_back(parentNodeIndex);
+			traverseTreeInitial(parentNodeIndex, glm::identity<glm::mat4>());
 		}
+
+		renderer.loadScene(asset.get(), this); // load textures and models onto GPU memory
 	}
 
-	const std::vector<const Node*>& getParentNodes() const { return m_parentModelInstances; }
-	const std::vector<std::unique_ptr<Node>>& getNodes() const { return m_nodes; }
+	const std::vector<size_t>& getParentNodeIndices() const { return m_parentNodes; }
+	const std::vector<Node>& getNodes() const { return m_nodes; }
+
+	const std::vector<ModelTransformBufferObject>& getModelInstanceTransforms() const {
+		return m_modelInstanceTransforms;
+	}
+	const std::vector<size_t> getModelInstancesPerMesh() { return m_modelInstancesPerMesh; }
+
+	const std::vector<LightBufferObject>& getLights() const { return m_lights; }
 
 	Camera sceneCamera {};
 
+	void propagateUpdates() { // check for any updates and propagate accordingly
+		while (!m_updates.empty()) {
+			size_t currUpdateIndex {m_updates.front()};
+			m_updates.pop();
+
+			Node& currUpdateNode {m_nodes[currUpdateIndex]};
+
+			if (currUpdateNode.modelInstanceIndex.has_value() or
+				currUpdateNode.lightIndex.has_value() or currUpdateNode.hasModelInstanceChild or
+				currUpdateNode.hasLightChild) {
+				Node& currNode {currUpdateNode};
+				glm::mat4 cumulativeTransform {
+					currUpdateNode.getTransform()
+				}; // travel upwards towards top in a straight line, accumulating transform matrices
+				while (currNode.parentIndex.has_value()) {
+					currNode = m_nodes[currNode.parentIndex.value()];
+					cumulativeTransform = currNode.getTransform() * cumulativeTransform;
+				}
+				if (currUpdateNode.modelInstanceIndex.has_value()) {
+					m_modelInstanceTransforms[currUpdateNode.modelInstanceIndex.value()]
+						.modelTransform = cumulativeTransform;
+				}
+				if (currUpdateNode.lightIndex.has_value()) {
+					m_lights[currUpdateNode.lightIndex.value()].transform = cumulativeTransform;
+				}
+				if (currUpdateNode.hasModelInstanceChild) {
+					for (const auto& childNodeIndex: currUpdateNode.childIndices) {
+						recursiveUpdateChildrenModelInstances(
+							m_nodes[childNodeIndex], cumulativeTransform
+						);
+					}
+				}
+				if (currUpdateNode.hasLightChild) {
+					for (const auto& childNodeIndex: currUpdateNode.childIndices) {
+						recursiveUpdateChildrenLights(m_nodes[childNodeIndex], cumulativeTransform);
+					}
+				}
+			}
+		}
+	}
+
   private:
-	std::vector<const Node*> m_parentModelInstances {};
-	std::vector<std::unique_ptr<Node>> m_nodes {};
+	std::vector<size_t> m_parentNodes {};
+	std::vector<Node> m_nodes {};
 
-	void getNode(const fastgltf::Node& node, const VulkanInterface& renderer) {
-		fastgltf::TRS TRS {std::get<fastgltf::TRS>(node.transform)};
-		glm::vec3 translation {TRS.translation.x(), TRS.translation.y(), TRS.translation.z()};
-		glm::quat rotation {TRS.rotation.w(), TRS.rotation.x(), TRS.rotation.y(), TRS.rotation.z()};
-		glm::vec3 scale {TRS.scale.x(), TRS.scale.y(), TRS.scale.z()};
-		std::vector<size_t> childIndices {node.children.begin(), node.children.end()};
+	std::vector<ModelTransformBufferObject> m_modelInstanceTransforms {};
+	std::vector<size_t> m_modelInstancesPerMesh {};
 
-		std::unique_ptr<Node> nodePointer {};
-		if (node.meshIndex.has_value()) {
-			nodePointer = std::make_unique<ModelInstance>(ModelInstance {
-				{translation, rotation, scale, childIndices},
-				&renderer.getMeshBuffers(node.meshIndex.value())
-			});
-		} else {
-			nodePointer = std::make_unique<Node>(translation, rotation, scale, childIndices);
-		} // TODO proper light input
-		m_nodes.push_back(std::move(nodePointer));
+	std::vector<LightBufferObject> m_lights {};
+
+	std::queue<size_t> m_updates {};
+
+	std::vector<std::vector<size_t>> getNodes(const fastgltf::Asset& asset) {
+		std::vector<std::vector<size_t>> flattenQueue {};
+		flattenQueue.resize(asset.meshes.size());
+		for (const auto& node: asset.nodes) {
+			fastgltf::TRS TRS {std::get<fastgltf::TRS>(node.transform)};
+			glm::vec3 translation {TRS.translation.x(), TRS.translation.y(), TRS.translation.z()};
+			glm::quat rotation {
+				TRS.rotation.w(), TRS.rotation.x(), TRS.rotation.y(), TRS.rotation.z()
+			};
+			glm::vec3 scale {TRS.scale.x(), TRS.scale.y(), TRS.scale.z()};
+			std::vector<size_t> childIndices {node.children.begin(), node.children.end()};
+
+			Node currNode {translation, rotation, scale, childIndices};
+
+			if (node.meshIndex.has_value()) {
+				m_modelInstancesPerMesh[node.meshIndex.value()] += 1;
+				flattenQueue[node.meshIndex.value()].push_back(m_nodes.size());
+			}
+			if (node.lightIndex.has_value()) {
+				const auto& currLight {asset.lights[node.lightIndex.value()]};
+				LightBufferObject currLightBuffer {
+					static_cast<LightBufferObject::LightType>(currLight.type),
+					glm::vec3 {currLight.color.x(), currLight.color.y(), currLight.color.z()},
+					currLight.intensity,
+				};
+				if (currLight.range.has_value()) {
+					currLightBuffer.range = currLight.range.value();
+				} else {
+					currLightBuffer.range = -1;
+				}
+				m_lights.push_back(currLightBuffer);
+				currNode.lightIndex = m_lights.size() - 1;
+			}
+			m_nodes.push_back(currNode);
+		}
+		return flattenQueue;
+	}
+	void traverseTreeInitial(
+		size_t currIndex, const glm::mat4& globalTransform, std::optional<size_t> parentIndex = {}
+	) {
+		Node& node = m_nodes[currIndex];
+
+		node.parentIndex = parentIndex;
+		const glm::mat4& localTransform {node.getTransform()};
+		glm::mat4 currentTransform {globalTransform * localTransform};
+		if (node.modelInstanceIndex.has_value()) {
+			m_modelInstanceTransforms[node.modelInstanceIndex.value()].modelTransform =
+				currentTransform;
+			Node& currNode {m_nodes[currIndex]};
+			while (
+				currNode.parentIndex.has_value() and
+				!m_nodes[currNode.parentIndex.value()].hasModelInstanceChild
+			) {
+				currNode = m_nodes[currNode.parentIndex.value()];
+				currNode.hasModelInstanceChild = true;
+			}
+		}
+		if (node.lightIndex.has_value()) {
+			m_lights[node.lightIndex.value()].transform = currentTransform;
+
+			Node& currNode {m_nodes[currIndex]};
+			while (
+				currNode.parentIndex.has_value() and
+				!m_nodes[currNode.parentIndex.value()].hasLightChild
+			) {
+				currNode = m_nodes[currNode.parentIndex.value()];
+				currNode.hasLightChild = true;
+			}
+		}
+		for (auto childNodeIndex: node.childIndices) {
+			traverseTreeInitial(childNodeIndex, currentTransform, currIndex);
+		}
+	}
+
+	void recursiveUpdateChildrenModelInstances(const Node& node, const glm::mat4& globalTransform) {
+		glm::mat4 currentTransform {globalTransform * node.getTransform()};
+		if (node.modelInstanceIndex.has_value()) {
+			m_modelInstanceTransforms[node.modelInstanceIndex.value()].modelTransform =
+				currentTransform;
+		}
+		if (node.hasModelInstanceChild) {
+			for (const auto& childNodeIndex: node.childIndices) {
+				recursiveUpdateChildrenModelInstances(m_nodes[childNodeIndex], currentTransform);
+			}
+		}
+	}
+	void recursiveUpdateChildrenLights(const Node& node, const glm::mat4& globalTransform) {
+		glm::mat4 currentTransform {globalTransform * node.getTransform()};
+		if (node.lightIndex.has_value()) {
+			m_lights[node.lightIndex.value()].transform = currentTransform;
+		}
+		if (node.hasLightChild) {
+			for (const auto& childNodeIndex: node.childIndices) {
+				recursiveUpdateChildrenLights(m_nodes[childNodeIndex], currentTransform);
+			}
+		}
 	}
 };
 

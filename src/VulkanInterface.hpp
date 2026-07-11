@@ -18,18 +18,19 @@ import vulkan_hpp;
 #include "fastgltf/types.hpp"
 
 #include "MeshBuffers.hpp"
-#include "Node.hpp"
 
 class Scene;
 
-struct MVPBufferObject {
-	alignas(16) glm::mat4 model;
-	alignas(16) glm::mat4 view;
-	alignas(16) glm::mat4 proj;
+struct ModelTransformBufferObject {
+	glm::mat4 modelTransform;
+};
+
+struct VPTransformBufferObject {
+	glm::mat4 viewTransform;
+	glm::mat4 projectionTransform;
 };
 
 struct PushConstants {
-	uint32_t matrixIndex;
 	uint32_t textureIndex;
 };
 
@@ -69,11 +70,13 @@ struct Vertex {
 };
 
 struct LightBufferObject {
-	enum LightType { directional, point, spot };
+	enum LightType { directional, spot, point };
 	LightType type {};
 	glm::vec3 color {};
 	float intensity {};
 	float range {};
+
+	glm::mat4 transform {};
 };
 
 class VulkanInterface {
@@ -89,11 +92,6 @@ class VulkanInterface {
 	void drawFrame();
 
 	GLFWwindow* const getWindow() const { return m_window; }
-
-	int getModelInstanceCount() const {
-		assert(m_currentScene != nullptr);
-		return m_mvpBuffers[0].size();
-	}
 
   private:
 	static constexpr int MAX_FRAMES_IN_FLIGHT {2};
@@ -160,12 +158,18 @@ class VulkanInterface {
 	std::vector<vk::raii::ImageView> m_textureImageViews {};
 	std::vector<vk::raii::Sampler> m_textureSamplers {};
 
-	std::array<std::vector<vk::raii::Buffer>, MAX_FRAMES_IN_FLIGHT> m_mvpBuffers {};
-	std::array<std::vector<VmaAllocation>, MAX_FRAMES_IN_FLIGHT> m_mvpAllocations {};
+	std::array<vk::raii::Buffer, MAX_FRAMES_IN_FLIGHT> m_modelTransformBuffers {
+		{{nullptr}, {nullptr}}
+	};
+	std::array<VmaAllocation, MAX_FRAMES_IN_FLIGHT> m_modelTransformAllocations {};
+
+	std::array<vk::raii::Buffer, MAX_FRAMES_IN_FLIGHT> m_vpTransformBuffers {
+		{{nullptr}, {nullptr}}
+	};
+	std::array<VmaAllocation, MAX_FRAMES_IN_FLIGHT> m_vpTransformAllocations {};
 
 	std::array<vk::raii::Buffer, MAX_FRAMES_IN_FLIGHT> m_lightBuffers {{{nullptr}, {nullptr}}};
 	std::array<VmaAllocation, MAX_FRAMES_IN_FLIGHT> m_lightAllocations {};
-	int m_lightCount {0};
 
 	vk::raii::DescriptorSetLayout m_descriptorSetLayout {nullptr};
 	vk::raii::DescriptorPool m_descriptorPool {nullptr};
@@ -182,10 +186,14 @@ class VulkanInterface {
 		m_textureImages.clear();
 		vmaDestroyImage(m_allocator, m_depthImage.release(), m_depthImageAllocation);
 		destroyMeshes();
-		for (int i {0}; i < m_mvpBuffers.size(); ++i) {
-			for (int j {0}; j < m_mvpBuffers[0].size(); ++j) {
-				vmaDestroyBuffer(m_allocator, m_mvpBuffers[i][j].release(), m_mvpAllocations[i][j]);
-			}
+		for (int i {0}; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+			vmaDestroyBuffer(
+				m_allocator, m_modelTransformBuffers[i].release(), m_modelTransformAllocations[i]
+			);
+			vmaDestroyBuffer(
+				m_allocator, m_vpTransformBuffers[i].release(), m_vpTransformAllocations[i]
+			);
+			vmaDestroyBuffer(m_allocator, m_lightBuffers[i].release(), m_lightAllocations[i]);
 		}
 		vmaDestroyAllocator(m_allocator);
 		glfwDestroyWindow(m_window);
@@ -230,7 +238,7 @@ class VulkanInterface {
 	void createBuffer(
 		vk::DeviceSize,
 		vk::BufferUsageFlags,
-		VmaAllocationCreateFlagBits,
+		VmaAllocationCreateFlags,
 		vk::raii::Buffer&,
 		VmaAllocation&
 	) const;
@@ -261,10 +269,10 @@ class VulkanInterface {
 	copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuffer, vk::DeviceSize size) const;
 	void loadMeshes(const fastgltf::Asset&);
 
-	void createUniformBuffers(const fastgltf::Asset&);
+	void createBuffers(const fastgltf::Asset&);
 
-	void createDescriptorPool(uint32_t, uint32_t);
-	vk::raii::DescriptorSetLayout createDescriptorSetLayout(uint32_t, uint32_t) const;
+	void createDescriptorPool(uint32_t);
+	vk::raii::DescriptorSetLayout createDescriptorSetLayout(uint32_t) const;
 	void createDescriptorSets(const fastgltf::Asset&);
 
 	static std::vector<char> readFile(const std::string&);
@@ -286,8 +294,6 @@ class VulkanInterface {
 		vk::ImageAspectFlags
 	);
 	void recreateSwapChain();
-	void updateUniformBuffer(const ModelInstance&, const glm::mat4&);
-	void queueDrawModelInstance(const ModelInstance*, const glm::mat4&, uint32_t&);
 };
 
 #endif // !VULKANINTERFACE_HPP

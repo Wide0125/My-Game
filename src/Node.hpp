@@ -7,41 +7,24 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #endif
 #include <glm/gtx/quaternion.hpp>
-
-#include "MeshBuffers.hpp"
+#include <glm/gtx/transform.hpp>
 
 struct Node {
-	Node(glm::vec3 position, glm::quat rotation, glm::vec3 scale, std::vector<size_t> childIndices)
-		: position {position}, rotation {rotation}, scale {scale}, childIndices {childIndices} {}
-	virtual ~Node() {};
-
 	glm::vec3 position {};
 	glm::quat rotation {};
 	glm::vec3 scale {};
-	std::vector<size_t> childIndices {};
-};
+	std::vector<size_t> childIndices {}; // required values
 
-struct ModelInstance : Node {
-	ModelInstance(const Node& node, const MeshBuffers* const mesh) : Node {node}, mesh {mesh} {}
-	const MeshBuffers* mesh {};
-};
+	std::optional<size_t> parentIndex {};
+	std::optional<size_t> modelInstanceIndex {};
+	std::optional<size_t> lightIndex {};
 
-struct Light : Node {
-	enum LightType { directional, point, spot };
-	Light(
-		const Node& node,
-		LightType type,
-		glm::vec3 color,
-		float intensity,
-		float range,
-		std::string_view name
-	)
-		: Node {node}, type {type}, color {color}, intensity {intensity}, range {range}, name {name} {}
-	LightType type {};
-	glm::vec3 color {};
-	float intensity {};
-	float range {};
-	std::string name {};
+	bool hasLightChild {false};
+	bool hasModelInstanceChild {false};
+
+	glm::mat4 getTransform() const {
+		return {glm::translate(position) * glm::toMat4(rotation) * glm::scale(scale)};
+	}
 };
 
 #endif // !MODELINSTANCE_HPP
