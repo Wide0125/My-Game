@@ -13,10 +13,7 @@ struct MeshBuffers {
 
 	uint32_t indicesCount {};
 
-	std::vector<uint32_t> textureIndices {};
-
-	// std::vector<Material> materials {};
-	// TODO: Implement materials
+	std::vector<uint32_t> materialIndices {};
 };
 
 #endif // !MESHBUFFERS_HPP

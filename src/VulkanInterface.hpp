@@ -22,16 +22,16 @@ import vulkan_hpp;
 class Scene;
 
 struct ModelTransformBufferObject {
-	glm::mat4 modelTransform;
+	glm::mat4 modelTransform {};
 };
 
 struct VPTransformBufferObject {
-	glm::mat4 viewTransform;
-	glm::mat4 projectionTransform;
+	glm::mat4 viewTransform {};
+	glm::mat4 projectionTransform {};
 };
 
 struct PushConstants {
-	uint32_t textureIndex;
+	uint32_t textureIndex {};
 };
 
 struct Vertex {
@@ -61,12 +61,6 @@ struct Vertex {
 			)
 		};
 	}
-
-	// Equality operator and hash function for vertex deduplication
-	bool operator==(const Vertex& other) const {
-		return pos == other.pos && normal == other.normal && color == other.color &&
-			   texCoord == other.texCoord;
-	}
 };
 
 struct LightBufferObject {
@@ -77,6 +71,23 @@ struct LightBufferObject {
 	float range {};
 
 	glm::mat4 transform {};
+};
+
+struct MaterialBufferObject {
+	uint32_t baseColorTextureIndex {};
+	glm::vec4 baseColorFactor {};
+
+	uint32_t metallicRoughnessTextureIndx {};
+	glm::vec2 metallicRoughnessFactor {};
+
+	uint32_t normalTextureIndex {};
+	float normalScale {};
+
+	uint32_t occlusionTextureIndex {};
+	float occlusionStrength {};
+
+	uint32_t emissiveTextureIndex {};
+	glm::vec3 emissiveFactor {};
 };
 
 class VulkanInterface {
@@ -157,6 +168,9 @@ class VulkanInterface {
 	std::vector<vk::raii::DeviceMemory> m_textureImageMemories {};
 	std::vector<vk::raii::ImageView> m_textureImageViews {};
 	std::vector<vk::raii::Sampler> m_textureSamplers {};
+
+	vk::raii::Buffer m_materialBuffer {nullptr};
+	VmaAllocation m_materialAllocation {};
 
 	std::array<vk::raii::Buffer, MAX_FRAMES_IN_FLIGHT> m_modelTransformBuffers {
 		{{nullptr}, {nullptr}}
@@ -268,6 +282,8 @@ class VulkanInterface {
 	void
 	copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuffer, vk::DeviceSize size) const;
 	void loadMeshes(const fastgltf::Asset&);
+
+	void loadMaterials(const fastgltf::Asset&);
 
 	void createBuffers(const fastgltf::Asset&);
 

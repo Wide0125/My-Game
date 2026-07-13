@@ -209,9 +209,10 @@ void VulkanInterface::copyBuffer(
 }
 
 void VulkanInterface::createDescriptorPool(uint32_t textureCount) {
-	std::array<vk::DescriptorPoolSize, 4> poolSize {
+	std::array<vk::DescriptorPoolSize, 5> poolSize {
 		{{.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = 1},
 		 {.type = vk::DescriptorType::eCombinedImageSampler,
 		  .descriptorCount = textureCount * MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT}}
@@ -226,16 +227,16 @@ void VulkanInterface::createDescriptorPool(uint32_t textureCount) {
 }
 vk::raii::DescriptorSetLayout
 VulkanInterface::createDescriptorSetLayout(uint32_t textureCount) const {
-	std::array<vk::DescriptorSetLayoutBinding, 4> bindings {
+	std::array<vk::DescriptorSetLayoutBinding, 5> bindings {
 		{{0, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr},
 		 {1, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr},
-
-		 {2,
+		 {2, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eFragment, nullptr},
+		 {3,
 		  vk::DescriptorType::eCombinedImageSampler,
 		  textureCount,
 		  vk::ShaderStageFlagBits::eFragment,
 		  nullptr},
-		 {3, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eFragment, nullptr}}
+		 {4, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eFragment, nullptr}}
 	};
 	vk::DescriptorSetLayoutCreateInfo layoutInfo {
 		.bindingCount = static_cast<uint32_t>(bindings.size()), .pBindings = bindings.data()

@@ -25,6 +25,7 @@ void VulkanInterface::loadScene(const fastgltf::Asset& asset, Scene* scene) {
 	createTextureImages(asset);
 	createTextureSamplers(asset);
 	loadMeshes(asset);
+	loadMaterials(asset);
 	createBuffers(asset);
 	createDescriptorSets(asset);
 	createGraphicsPipeline();
@@ -246,8 +247,8 @@ void VulkanInterface::loadMeshes(const fastgltf::Asset& asset) {
 		uint32_t indicesCount {0};
 		indexBuffers.reserve(hasIndicesCount);
 		indexBufferAllocations.reserve(hasIndicesCount);
-		std::vector<uint32_t> textureIndices {};
-		textureIndices.reserve(hasIndicesCount);
+		std::vector<uint32_t> materialIndices {};
+		materialIndices.reserve(hasIndicesCount);
 		size_t offset {0};
 		for (const auto& primitive: mesh.primitives) {
 			const auto& positionAccessor { // load vertices
@@ -330,13 +331,10 @@ void VulkanInterface::loadMeshes(const fastgltf::Asset& asset) {
 			indexBuffers.push_back(std::move(indexBuffer));
 			indexBufferAllocations.push_back(std::move(indexBufferAllocation));
 
-			if (primitive.materialIndex.has_value() and
-				asset.materials[primitive.materialIndex.value()]
-					.pbrData.baseColorTexture.has_value()) {
-				textureIndices.push_back(asset.materials[primitive.materialIndex.value()]
-											 .pbrData.baseColorTexture->textureIndex);
+			if (primitive.materialIndex.has_value()) {
+				materialIndices.push_back(primitive.materialIndex.has_value());
 			} else {
-				textureIndices.push_back(-1);
+				materialIndices.push_back(-1);
 			}
 
 			offset += positionAccessor.count;
@@ -378,10 +376,95 @@ void VulkanInterface::loadMeshes(const fastgltf::Asset& asset) {
 				std::move(indexBuffers),
 				std::move(indexBufferAllocations),
 				indicesCount,
-				textureIndices
+				materialIndices
 			}
 		);
 	}
+}
+
+void VulkanInterface::loadMaterials(const fastgltf::Asset& asset) {
+	std::vector<MaterialBufferObject> materials {};
+	materials.reserve(asset.materials.size());
+	for (const auto& material: asset.materials) {
+		const auto& pbrData {material.pbrData};
+
+		uint32_t baseColorTextureIndex {static_cast<uint32_t>(-1)};
+		glm::vec4 baseColorFactor {
+			pbrData.baseColorFactor.x(),
+			pbrData.baseColorFactor.y(),
+			pbrData.baseColorFactor.z(),
+			pbrData.baseColorFactor.w()
+		};
+		if (pbrData.baseColorTexture.has_value()) {
+			assert(pbrData.baseColorTexture->texCoordIndex == 0);
+			baseColorTextureIndex = pbrData.baseColorTexture->textureIndex;
+		}
+
+		uint32_t metallicRoughnessTextureIndex {static_cast<uint32_t>(-1)};
+		glm::vec2 metallicRoughnessFactor {pbrData.metallicFactor, pbrData.roughnessFactor};
+		if (pbrData.metallicRoughnessTexture.has_value()) {
+			assert(pbrData.metallicRoughnessTexture->texCoordIndex == 0);
+			metallicRoughnessTextureIndex = pbrData.metallicRoughnessTexture->textureIndex;
+		}
+
+		uint32_t normalTextureIndex {static_cast<uint32_t>(-1)};
+		float normalScale {1};
+		if (material.normalTexture.has_value()) {
+			assert(material.normalTexture->texCoordIndex == 0);
+			normalTextureIndex = material.normalTexture->textureIndex;
+			normalScale = material.normalTexture->scale;
+		}
+
+		uint32_t occlusionTextureIndex {static_cast<uint32_t>(-1)};
+		float occlusionStrength {1};
+		if (material.occlusionTexture.has_value()) {
+			assert(material.occlusionTexture->texCoordIndex == 0);
+			occlusionTextureIndex = material.occlusionTexture->textureIndex;
+			occlusionStrength = material.occlusionTexture->strength;
+		}
+
+		uint32_t emissiveTextureIndex {static_cast<uint32_t>(-1)};
+		glm::vec3 emissiveFactor {
+			material.emissiveFactor.x(), material.emissiveFactor.y(), material.emissiveFactor.z()
+		};
+		if (material.emissiveTexture.has_value()) {
+			assert(material.emissiveTexture->texCoordIndex == 0);
+			emissiveTextureIndex = material.emissiveTexture->textureIndex;
+		}
+
+		materials.emplace_back(
+			baseColorTextureIndex,
+			baseColorFactor,
+			metallicRoughnessTextureIndex,
+			metallicRoughnessFactor,
+			normalTextureIndex,
+			normalScale,
+			occlusionTextureIndex,
+			occlusionStrength,
+			emissiveTextureIndex,
+			emissiveFactor
+		);
+	}
+	vk::DeviceSize bufferSize {sizeof(MaterialBufferObject) * materials.size()};
+	vk::raii::Buffer stagingBuffer {nullptr};
+	VmaAllocation stagingAllocation {};
+	createBuffer(
+		bufferSize,
+		vk::BufferUsageFlagBits::eTransferSrc,
+		VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
+		stagingBuffer,
+		stagingAllocation
+	);
+	vmaCopyMemoryToAllocation(m_allocator, materials.data(), stagingAllocation, 0, bufferSize);
+	createBuffer(
+		bufferSize,
+		vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer,
+		{},
+		m_materialBuffer,
+		m_materialAllocation
+	);
+	copyBuffer(stagingBuffer, m_materialBuffer, bufferSize);
+	vmaDestroyBuffer(m_allocator, stagingBuffer.release(), stagingAllocation);
 }
 
 void VulkanInterface::createBuffers(const fastgltf::Asset& asset) {
@@ -446,6 +529,12 @@ void VulkanInterface::createDescriptorSets(const fastgltf::Asset& asset) {
 			.range = sizeof(VPTransformBufferObject)
 		};
 
+		vk::DescriptorBufferInfo materialBufferInfo {
+			.buffer = m_materialBuffer,
+			.offset = 0,
+			.range = sizeof(MaterialBufferObject) * asset.materials.size()
+		};
+
 		std::vector<vk::DescriptorImageInfo> imageInfos {};
 		imageInfos.reserve(textureCount);
 		for (const auto& texture: asset.textures) {
@@ -461,7 +550,7 @@ void VulkanInterface::createDescriptorSets(const fastgltf::Asset& asset) {
 			0,
 			sizeof(LightBufferObject) * m_currentScene->getLights().size()
 		};
-		std::array<vk::WriteDescriptorSet, 4> descriptorWrites {
+		std::array<vk::WriteDescriptorSet, 5> descriptorWrites {
 			{{.dstSet = m_descriptorSets[frameInFlight],
 			  .dstBinding = 0,
 			  .dstArrayElement = 0,
@@ -474,16 +563,22 @@ void VulkanInterface::createDescriptorSets(const fastgltf::Asset& asset) {
 			  .descriptorCount = 1,
 			  .descriptorType = vk::DescriptorType::eUniformBuffer,
 			  .pBufferInfo = &vpTransformBufferInfo},
+			 {.dstSet = m_descriptorSets[frameInFlight],
+			  .dstBinding = 2,
+			  .dstArrayElement = 0,
+			  .descriptorCount = 1,
+			  .descriptorType = vk::DescriptorType::eStorageBuffer,
+			  .pBufferInfo = &materialBufferInfo},
 			 {
 				 .dstSet = m_descriptorSets[frameInFlight],
-				 .dstBinding = 2,
+				 .dstBinding = 3,
 				 .dstArrayElement = 0,
 				 .descriptorCount = static_cast<uint32_t>(textureCount),
 				 .descriptorType = vk::DescriptorType::eCombinedImageSampler,
 				 .pImageInfo = imageInfos.data(),
 			 },
 			 {.dstSet = m_descriptorSets[frameInFlight],
-			  .dstBinding = 3,
+			  .dstBinding = 4,
 			  .dstArrayElement = 0,
 			  .descriptorCount = 1,
 			  .descriptorType = vk::DescriptorType::eUniformBuffer,
