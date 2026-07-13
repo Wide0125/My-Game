@@ -37,7 +37,6 @@ struct PushConstants {
 struct Vertex {
 	glm::vec3 pos;
 	glm::vec3 normal;
-	glm::vec3 color;
 	glm::vec2 texCoord;
 
 	// Binding and attribute descriptions for Vulkan
@@ -54,10 +53,7 @@ struct Vertex {
 				1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, normal)
 			),
 			vk::VertexInputAttributeDescription(
-				2, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, color)
-			),
-			vk::VertexInputAttributeDescription(
-				3, 0, vk::Format::eR32G32Sfloat, offsetof(Vertex, texCoord)
+				2, 0, vk::Format::eR32G32Sfloat, offsetof(Vertex, texCoord)
 			)
 		};
 	}
@@ -74,10 +70,10 @@ struct LightBufferObject {
 };
 
 struct MaterialBufferObject {
-	alignas(4) uint32_t baseColorTextureIndex {};
+	alignas(16) uint32_t baseColorTextureIndex {};
 	alignas(16) glm::vec4 baseColorFactor {};
 
-	alignas(4) uint32_t metallicRoughnessTextureIndx {};
+	alignas(8) uint32_t metallicRoughnessTextureIndx {};
 	alignas(8) glm::vec2 metallicRoughnessFactor {};
 
 	alignas(4) uint32_t normalTextureIndex {};

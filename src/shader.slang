@@ -1,14 +1,12 @@
 struct VSInput {
     float3 inPosition;
     float3 inNormal;
-    float3 inColor;
     float2 inTexCoords;
 };
 
 struct VSOutput
 {
     float4 pos : SV_Position;
-    float3 fragColor;
     float2 fragTexCoord;
 };
 
@@ -41,7 +39,6 @@ struct PushData {
 VSOutput vertMain(VSInput input, uint instanceID : SV_VulkanInstanceID) {
     VSOutput output;
     output.pos = mul(vpTransform.projection, mul(vpTransform.view, mul(modelTransform[instanceID].model, float4(input.inPosition, 1.0))));
-    output.fragColor = input.inColor;
     output.fragTexCoord = input.inTexCoords;
     return output;
 }
