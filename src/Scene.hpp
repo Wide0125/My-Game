@@ -58,7 +58,8 @@ class Scene {
 		for (const auto& mesh: flattenQueue) {
 			for (auto modelInstanceIndex: mesh) {
 				m_modelInstanceTransforms.push_back({});
-				m_nodes[modelInstanceIndex].modelInstanceIndex = m_modelInstanceTransforms.size() - 1;
+				m_nodes[modelInstanceIndex].modelInstanceIndex =
+					m_modelInstanceTransforms.size() - 1;
 			}
 		}
 

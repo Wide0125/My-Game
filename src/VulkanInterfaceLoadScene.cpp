@@ -445,13 +445,13 @@ void VulkanInterface::loadMaterials(const fastgltf::Asset& asset) {
 			emissiveFactor
 		);
 	}
-	vk::DeviceSize bufferSize {sizeof(MaterialBufferObject) * materials.size()};
+	vk::DeviceSize bufferSize {sizeof(materials[0]) * materials.size()};
 	vk::raii::Buffer stagingBuffer {nullptr};
 	VmaAllocation stagingAllocation {};
 	createBuffer(
 		bufferSize,
 		vk::BufferUsageFlagBits::eTransferSrc,
-		VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
+		VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
 		stagingBuffer,
 		stagingAllocation
 	);

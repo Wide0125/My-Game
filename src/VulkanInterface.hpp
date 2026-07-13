@@ -74,20 +74,20 @@ struct LightBufferObject {
 };
 
 struct MaterialBufferObject {
-	uint32_t baseColorTextureIndex {};
-	glm::vec4 baseColorFactor {};
+	alignas(4) uint32_t baseColorTextureIndex {};
+	alignas(16) glm::vec4 baseColorFactor {};
 
-	uint32_t metallicRoughnessTextureIndx {};
-	glm::vec2 metallicRoughnessFactor {};
+	alignas(4) uint32_t metallicRoughnessTextureIndx {};
+	alignas(8) glm::vec2 metallicRoughnessFactor {};
 
-	uint32_t normalTextureIndex {};
-	float normalScale {};
+	alignas(4) uint32_t normalTextureIndex {};
+	alignas(4) float normalScale {};
 
-	uint32_t occlusionTextureIndex {};
-	float occlusionStrength {};
+	alignas(4) uint32_t occlusionTextureIndex {};
+	alignas(4) float occlusionStrength {};
 
-	uint32_t emissiveTextureIndex {};
-	glm::vec3 emissiveFactor {};
+	alignas(4) uint32_t emissiveTextureIndex {};
+	alignas(16) glm::vec3 emissiveFactor {};
 };
 
 class VulkanInterface {
@@ -199,6 +199,7 @@ class VulkanInterface {
 	void cleanup() {
 		m_textureImages.clear();
 		vmaDestroyImage(m_allocator, m_depthImage.release(), m_depthImageAllocation);
+		vmaDestroyBuffer(m_allocator, m_materialBuffer.release(), m_materialAllocation);
 		destroyMeshes();
 		for (int i {0}; i < MAX_FRAMES_IN_FLIGHT; ++i) {
 			vmaDestroyBuffer(

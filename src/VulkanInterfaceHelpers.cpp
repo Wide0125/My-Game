@@ -212,7 +212,7 @@ void VulkanInterface::createDescriptorPool(uint32_t textureCount) {
 	std::array<vk::DescriptorPoolSize, 5> poolSize {
 		{{.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
-		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = 1},
+		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eCombinedImageSampler,
 		  .descriptorCount = textureCount * MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT}}

@@ -50,7 +50,7 @@ struct MaterialBuffer {
     uint baseColorTextureIndex;
 	float4 baseColorFactor;
 
-	uint metallicRoughnessTextureIndx;
+	uint metallicRoughnessTextureIndex;
 	float2 metallicRoughnessFactor;
 
 	uint normalTextureIndex;

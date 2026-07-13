@@ -10,8 +10,6 @@
 #include "Scene.hpp"
 #include "VulkanInterface.hpp"
 
-
-
 int main() {
 	VulkanInterface renderer {};
 	std::unique_ptr<Scene> currentScene {std::make_unique<Scene>("Scene1.glb", renderer)};
