@@ -25,9 +25,10 @@ find_package(Vulkan 1.4.350 REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(glm REQUIRED)
 find_package(fastgltf REQUIRED)
-find_package(vma REQUIRED)
 find_package(KTX REQUIRED)
+find_package(VulkanMemoryAllocator REQUIRED)
 
+# Set up Vulkan C++ module only if enabled
 if(ENABLE_CPP20_MODULE)
   add_library(VulkanCppModule)
   add_library(Vulkan::cppm ALIAS VulkanCppModule)
@@ -58,9 +59,6 @@ if(ENABLE_CPP20_MODULE)
     FILES
     "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
   )
-
-
-  # Add the vulkan.cppm file directly as a source file
   target_sources(VulkanCppModule
     PRIVATE
     "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
@@ -75,16 +73,15 @@ else()
   )
 endif()
 
-
-add_executable(${PROJECT_NAME} 
+add_executable(${PROJECT_NAME}
   src/main.cpp
   src/VulkanInterfaceInit.cpp
   src/VulkanInterfaceLoadScene.cpp
   src/VulkanInterfaceHelpers.cpp
   src/VulkanInterfaceDraw.cpp
-  )
+)
 
-target_link_libraries (${PROJECT_NAME} Vulkan::cppm glfw glm::glm fastgltf VulkanMemoryAllocator KTX::ktx)
+target_link_libraries (${PROJECT_NAME} Vulkan::cppm glfw glm::glm fastgltf KTX::ktx VulkanMemoryAllocator)
 
 find_program(SLANGC_EXECUTABLE slangc HINTS $ENV{VULKAN_SDK}/bin REQUIRED)
 # Slang shader
@@ -98,7 +95,7 @@ function (add_slang_shader_target TARGET)
   )
   add_custom_command (
           OUTPUT  ${SHADERS_DIR}/slang.spv
-          COMMAND ${SLANGC_EXECUTABLE} ${SHADER_SOURCES} -target spirv -profile spirv_1_4 -emit-spirv-directly -fvk-use-entrypoint-name ${ENTRY_POINTS} -o slang.spv
+          COMMAND ${SLANGC_EXECUTABLE} ${SHADER_SOURCES} -target spirv -profile spirv_1_4 -emit-spirv-directly -fvk-use-entrypoint-name -fvk-use-c-layout ${ENTRY_POINTS} -o slang.spv
           WORKING_DIRECTORY ${SHADERS_DIR}
           DEPENDS ${SHADERS_DIR} ${SHADER_SOURCES}
           COMMENT "Compiling Slang Shaders"

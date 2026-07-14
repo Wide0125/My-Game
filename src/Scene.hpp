@@ -107,7 +107,11 @@ class Scene {
 						.modelTransform = cumulativeTransform;
 				}
 				if (currUpdateNode.lightIndex.has_value()) {
-					m_lights[currUpdateNode.lightIndex.value()].transform = cumulativeTransform;
+					m_lights[currUpdateNode.lightIndex.value()].position = {
+						cumulativeTransform[3][0],
+						cumulativeTransform[3][1],
+						cumulativeTransform[3][2]
+					};
 				}
 				if (currUpdateNode.hasModelInstanceChild) {
 					for (const auto& childNodeIndex: currUpdateNode.childIndices) {
@@ -194,7 +198,9 @@ class Scene {
 			}
 		}
 		if (node.lightIndex.has_value()) {
-			m_lights[node.lightIndex.value()].transform = currentTransform;
+			m_lights[node.lightIndex.value()].position = {
+				currentTransform[3][0], currentTransform[3][1], currentTransform[3][2]
+			};
 
 			Node& currNode {m_nodes[currIndex]};
 			while (
@@ -225,7 +231,9 @@ class Scene {
 	void recursiveUpdateChildrenLights(const Node& node, const glm::mat4& globalTransform) {
 		glm::mat4 currentTransform {globalTransform * node.getTransform()};
 		if (node.lightIndex.has_value()) {
-			m_lights[node.lightIndex.value()].transform = currentTransform;
+			m_lights[node.lightIndex.value()].position = {
+				currentTransform[3][0], currentTransform[3][1], currentTransform[3][2]
+			};
 		}
 		if (node.hasLightChild) {
 			for (const auto& childNodeIndex: node.childIndices) {

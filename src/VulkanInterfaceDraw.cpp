@@ -108,18 +108,20 @@ void VulkanInterface::drawFrame() {
 
 	Camera& sceneCamera {m_currentScene->sceneCamera};
 	VPTransformBufferObject vpTransform {
-		lookAt(
-			sceneCamera.getCameraPosition(),
-			sceneCamera.getCameraPosition() + sceneCamera.getLookAtVector(),
-			sceneCamera.getUp()
-		),
-		glm::perspective(
-			glm::radians(45.0f),
-			static_cast<float>(m_swapChainExtent.width) /
-				static_cast<float>(m_swapChainExtent.height),
-			0.1f,
-			100.0f
-		)
+		sceneCamera.getCameraPosition(),
+			lookAt(
+				sceneCamera.getCameraPosition(),
+				sceneCamera.getCameraPosition() + sceneCamera.getLookAtVector(),
+				sceneCamera.getUp()
+			),
+			glm::perspective(
+				glm::radians(45.0f),
+				static_cast<float>(m_swapChainExtent.width) /
+					static_cast<float>(m_swapChainExtent.height),
+				0.1f,
+				100.0f
+			),
+			static_cast<int>(m_currentScene->getLights().size())
 	};
 	vpTransform.projectionTransform[1][1] *= -1;
 	vmaCopyMemoryToAllocation(

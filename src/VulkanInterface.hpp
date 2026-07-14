@@ -2,7 +2,6 @@
 #define VULKANINTERFACE_HPP
 
 #include <cstdint>
-#include <vector>
 #if defined(__INTELLISENSE__) || !defined(USE_CPP20_MODULES)
 #include <vulkan/vulkan_raii.hpp>
 #else
@@ -26,8 +25,10 @@ struct ModelTransformBufferObject {
 };
 
 struct VPTransformBufferObject {
+	glm::vec3 cameraPosition {};
 	glm::mat4 viewTransform {};
 	glm::mat4 projectionTransform {};
+	int lightCount {};
 };
 
 struct PushConstants {
@@ -37,14 +38,16 @@ struct PushConstants {
 struct Vertex {
 	glm::vec3 pos;
 	glm::vec3 normal;
+	glm::vec3 color;
 	glm::vec2 texCoord;
+	glm::vec4 tangent;
 
 	// Binding and attribute descriptions for Vulkan
 	static vk::VertexInputBindingDescription getBindingDescription() {
 		return {0, sizeof(Vertex), vk::VertexInputRate::eVertex};
 	}
 
-	static std::array<vk::VertexInputAttributeDescription, 4> getAttributeDescriptions() {
+	static std::array<vk::VertexInputAttributeDescription, 5> getAttributeDescriptions() {
 		return {
 			vk::VertexInputAttributeDescription(
 				0, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, pos)
@@ -53,7 +56,13 @@ struct Vertex {
 				1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, normal)
 			),
 			vk::VertexInputAttributeDescription(
-				2, 0, vk::Format::eR32G32Sfloat, offsetof(Vertex, texCoord)
+				2, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, color)
+			),
+			vk::VertexInputAttributeDescription(
+				3, 0, vk::Format::eR32G32Sfloat, offsetof(Vertex, texCoord)
+			),
+			vk::VertexInputAttributeDescription(
+				4, 0, vk::Format::eR32G32B32A32Sfloat, offsetof(Vertex, tangent)
 			)
 		};
 	}
@@ -66,24 +75,24 @@ struct LightBufferObject {
 	float intensity {};
 	float range {};
 
-	glm::mat4 transform {};
+	glm::vec3 position {};
 };
 
 struct MaterialBufferObject {
-	alignas(16) uint32_t baseColorTextureIndex {};
-	alignas(16) glm::vec4 baseColorFactor {};
+	uint32_t baseColorTextureIndex {};
+	glm::vec4 baseColorFactor {};
 
-	alignas(8) uint32_t metallicRoughnessTextureIndx {};
-	alignas(8) glm::vec2 metallicRoughnessFactor {};
+	uint32_t metallicRoughnessTextureIndx {};
+	glm::vec2 metallicRoughnessFactor {};
 
-	alignas(4) uint32_t normalTextureIndex {};
-	alignas(4) float normalScale {};
+	uint32_t normalTextureIndex {};
+	float normalScale {};
 
-	alignas(4) uint32_t occlusionTextureIndex {};
-	alignas(4) float occlusionStrength {};
+	uint32_t occlusionTextureIndex {};
+	float occlusionStrength {};
 
-	alignas(4) uint32_t emissiveTextureIndex {};
-	alignas(16) glm::vec3 emissiveFactor {};
+	uint32_t emissiveTextureIndex {};
+	glm::vec3 emissiveFactor {};
 };
 
 class VulkanInterface {
