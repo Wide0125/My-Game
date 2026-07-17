@@ -1,4 +1,3 @@
-#include <algorithm>
 #include <print>
 
 #define GLFW_INCLUDE_VULKAN
@@ -144,7 +143,7 @@ void VulkanInterface::createTextureImages(const fastgltf::Asset& asset) {
 	for (const auto& texture: asset.textures) {
 	}
 }
-void VulkanInterface::createTextureSamplers(const fastgltf::Asset& asset) {
+void VulkanInterface::createTextureSamplers(const fastgltf::Asset& asset) {	
 	m_textureSamplers.clear();
 	m_textureSamplers.reserve(asset.samplers.size());
 	for (const auto& sampler: asset.samplers) {
@@ -239,8 +238,9 @@ void VulkanInterface::loadMeshes(const fastgltf::Asset& asset) {
 		}
 		std::vector<glm::vec3> positions(positionsCount);
 		std::vector<glm::vec3> normals(positionsCount);
-		std::vector<glm::vec3> colors(positionsCount);
+		std::vector<glm::vec4> colors(positionsCount);
 		std::vector<glm::vec2> texCoords(positionsCount);
+		std::vector<glm::vec4> tangents(positionsCount);
 
 		std::vector<vk::raii::Buffer> indexBuffers {};
 		std::vector<VmaAllocation> indexBufferAllocations {};
@@ -263,24 +263,12 @@ void VulkanInterface::loadMeshes(const fastgltf::Asset& asset) {
 				fastgltf::copyFromAccessor<glm::vec3>(
 					asset, normalsAccessor, normals.data() + offset
 				);
-			} else {
-				std::fill(
-					normals.begin() + offset,
-					normals.begin() + offset + positionAccessor.count,
-					glm::vec3 {0, 0, 0}
-				);
 			}
 			const auto colorIt {primitive.findAttribute("COLOR_0")}; // load colors
 			if (colorIt != primitive.attributes.end()) {
 				const auto& colorsAccessor {asset.accessors[colorIt->accessorIndex]};
-				fastgltf::copyFromAccessor<glm::vec2>(
+				fastgltf::copyFromAccessor<glm::vec4>(
 					asset, colorsAccessor, colors.data() + offset
-				);
-			} else {
-				std::fill(
-					colors.begin() + offset,
-					colors.begin() + offset + positionAccessor.count,
-					glm::vec4 {0, 0, 0, 0}
 				);
 			}
 			const auto texCoordsIt {primitive.findAttribute("TEXCOORD_0")}; // load UVs
@@ -289,12 +277,11 @@ void VulkanInterface::loadMeshes(const fastgltf::Asset& asset) {
 				fastgltf::copyFromAccessor<glm::vec2>(
 					asset, texCoordsAccessor, texCoords.data() + offset
 				);
-			} else {
-				std::fill(
-					texCoords.begin() + offset,
-					texCoords.begin() + offset + positionAccessor.count,
-					glm::vec2 {std::nan(""), std::nan("")}
-				);
+			}
+			const auto tangentIt {primitive.findAttribute("TANGENT")};
+			if (tangentIt != primitive.attributes.end()) {
+				const auto& tangentAccessor {asset.accessors[tangentIt->accessorIndex]};
+				fastgltf::copyFromAccessor<glm::vec4>(asset, tangentAccessor, tangents.data() + offset);
 			}
 
 			std::vector<uint32_t> indices {}; // load indices
@@ -342,7 +329,7 @@ void VulkanInterface::loadMeshes(const fastgltf::Asset& asset) {
 		std::vector<Vertex> vertices {};
 		vertices.reserve(positions.size());
 		for (size_t i {0}; i < positions.size(); ++i) {
-			vertices.emplace_back(positions[i], normals[i], colors[i], texCoords[i]);
+			vertices.emplace_back(positions[i], normals[i], colors[i], texCoords[i], tangents[i]);
 		}
 
 		vk::raii::Buffer stagingBuffer {nullptr};

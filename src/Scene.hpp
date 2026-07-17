@@ -105,6 +105,7 @@ class Scene {
 				if (currUpdateNode.modelInstanceIndex.has_value()) {
 					m_modelInstanceTransforms[currUpdateNode.modelInstanceIndex.value()]
 						.modelTransform = cumulativeTransform;
+					m_modelInstanceTransforms[currUpdateNode.modelInstanceIndex.value()].normalMatrix = glm::transpose(glm::inverse(glm::mat3(cumulativeTransform)));
 				}
 				if (currUpdateNode.lightIndex.has_value()) {
 					m_lights[currUpdateNode.lightIndex.value()].position = {
@@ -188,6 +189,8 @@ class Scene {
 		if (node.modelInstanceIndex.has_value()) {
 			m_modelInstanceTransforms[node.modelInstanceIndex.value()].modelTransform =
 				currentTransform;
+			m_modelInstanceTransforms[node.modelInstanceIndex.value()].normalMatrix =
+				glm::transpose(glm::inverse(glm::mat3(currentTransform)));
 			Node& currNode {m_nodes[currIndex]};
 			while (
 				currNode.parentIndex.has_value() and
@@ -221,6 +224,8 @@ class Scene {
 		if (node.modelInstanceIndex.has_value()) {
 			m_modelInstanceTransforms[node.modelInstanceIndex.value()].modelTransform =
 				currentTransform;
+			m_modelInstanceTransforms[node.modelInstanceIndex.value()].normalMatrix =
+				glm::transpose(glm::inverse(glm::mat3(currentTransform)));
 		}
 		if (node.hasModelInstanceChild) {
 			for (const auto& childNodeIndex: node.childIndices) {

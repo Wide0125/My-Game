@@ -22,6 +22,7 @@ class Scene;
 
 struct ModelTransformBufferObject {
 	glm::mat4 modelTransform {};
+	glm::mat3 normalMatrix {};
 };
 
 struct VPTransformBufferObject {
@@ -38,7 +39,7 @@ struct PushConstants {
 struct Vertex {
 	glm::vec3 pos;
 	glm::vec3 normal;
-	glm::vec3 color;
+	glm::vec4 color;
 	glm::vec2 texCoord;
 	glm::vec4 tangent;
 

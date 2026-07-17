@@ -6,10 +6,13 @@
     "fmat",
     "Gltf",
     "isnan",
+    "lerp",
     "MESHBUFFERS",
     "MODELINSTANCE",
     "Multisample",
     "multisampling",
+    "Ndot",
+    "Schlick",
     "Swapchain",
     "TINYGLTF"
   ]
