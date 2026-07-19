@@ -77,6 +77,7 @@ struct LightBufferObject {
 	float range {};
 
 	glm::vec3 position {};
+	glm::vec3 direction {};
 };
 
 struct MaterialBufferObject {
@@ -132,7 +133,7 @@ class VulkanInterface {
 	vk::raii::Device m_device {nullptr}; // interface to interact with GPU
 	uint32_t m_queueFamilyIndex {~0u};	 // index of selected queue family
 	vk::raii::Queue m_queue {nullptr};	 // selected queue
-	std::vector<const char*> m_requiredDeviceExtensions {vk::KHRSwapchainExtensionName};
+	std::vector<const char*> m_requiredDeviceExtensions {vk::KHRSwapchainExtensionName, vk::KHRAccelerationStructureExtensionName, vk::KHRRayQueryExtensionName};
 
 	VmaAllocator m_allocator {};
 

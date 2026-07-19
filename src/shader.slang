@@ -29,13 +29,14 @@ struct VPTransformBuffer {
 }
 
 struct LightBuffer {
-	enum LightType { directional, point, spot };
+	enum LightType { directional, spot, point };
 	LightType type;
 	float3 color;
 	float intensity;
 	float range;
 
 	float3 position;
+	float3 direction;
 };
 
 struct MaterialBuffer {
@@ -65,7 +66,7 @@ struct PushData {
 [[vk::binding(1, 0)]] ConstantBuffer<VPTransformBuffer> vpTransform;
 [[vk::binding(2, 0)]] StructuredBuffer<MaterialBuffer> materials;
 [[vk::binding(3, 0)]] Sampler2D textures[];
-[[vk::binding(4, 0)]] ConstantBuffer<LightBuffer> lights[];
+[[vk::binding(4, 0)]] StructuredBuffer<LightBuffer> lights;
 
 static const float PI = 3.14159265359;
 static const uint32_t UINT32_MAX = 4294967295;
@@ -127,7 +128,7 @@ float4 fragMain(VSOutput input) : SV_TARGET {
 	float3 N = normalize(input.normal);
 	if (currMaterial.normalTextureIndex != UINT32_MAX) {
 		float3 T = normalize(input.tangent.xyz);
-		T = normalize(T - N * dot(N, T));
+		T = normalize(T - dot(T, N) * N);
 		float3 B = cross(N, T) * input.tangent.w;
 		float3x3 TBN = float3x3(T, B, N);
 		float3 mappedNormal = textures[currMaterial.normalTextureIndex].Sample(input.UV).xyz * 2.0 - 1.0;
@@ -159,12 +160,24 @@ float4 fragMain(VSOutput input) : SV_TARGET {
 	for (int i = 0; i < vpTransform.lightCount; ++i) {
 		LightBuffer currLight = lights[i];
 
-		float3 L = normalize(currLight.position - input.worldPosition);
+		float3 L;
+		if (currLight.type == LightBuffer::LightType::point) {
+			L = normalize(currLight.position - input.worldPosition);
+		}
+		else {
+			L = normalize(currLight.direction);
+		}
 		float3 H = normalize(V + L);
 
-		float distance = length(currLight.position - input.worldPosition);
-		float attenuation = 1.0 / (distance * distance);
-		float3 radiance = currLight.intensity * currLight.color * attenuation;
+		float3 radiance;
+		if (currLight.type == LightBuffer::LightType::point) {
+			float distance = length(currLight.position - input.worldPosition);
+			float attenuation = 1.0 / (distance * distance);
+			radiance = currLight.intensity * currLight.color * attenuation;
+		}
+		else {
+			radiance = currLight.intensity * currLight.color;
+		}
 
 		float NDF = DistributionGGX(N, H, roughness);
 		float G = GeometrySmith(N, V, L, roughness);

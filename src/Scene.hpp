@@ -113,6 +113,9 @@ class Scene {
 						cumulativeTransform[3][1],
 						cumulativeTransform[3][2]
 					};
+					m_lights[currUpdateNode.lightIndex.value()].direction = glm::vec3{
+						cumulativeTransform * glm::vec4{0, 0, 1, 0}
+					};
 				}
 				if (currUpdateNode.hasModelInstanceChild) {
 					for (const auto& childNodeIndex: currUpdateNode.childIndices) {
@@ -204,6 +207,8 @@ class Scene {
 			m_lights[node.lightIndex.value()].position = {
 				currentTransform[3][0], currentTransform[3][1], currentTransform[3][2]
 			};
+			m_lights[node.lightIndex.value()].direction =
+				glm::vec3 {currentTransform * glm::vec4 {0, 0, 1, 0}};
 
 			Node& currNode {m_nodes[currIndex]};
 			while (
@@ -239,6 +244,8 @@ class Scene {
 			m_lights[node.lightIndex.value()].position = {
 				currentTransform[3][0], currentTransform[3][1], currentTransform[3][2]
 			};
+			m_lights[node.lightIndex.value()].direction =
+				glm::vec3 {currentTransform * glm::vec4 {0, 0, 1, 0}};
 		}
 		if (node.hasLightChild) {
 			for (const auto& childNodeIndex: node.childIndices) {

@@ -24,6 +24,16 @@
           "intensity": 79.57747154594767,
           "type": "point",
           "name": "Light"
+        },
+        {
+          "color": [
+            1,
+            1,
+            1
+          ],
+          "intensity": 3,
+          "type": "directional",
+          "name": "Sun"
         }
       ]
     }
@@ -37,7 +47,8 @@
         1,
         2,
         3,
-        4
+        4,
+        5
       ]
     }
   ],
@@ -60,9 +71,9 @@
         0.39979296922683716
       ],
       "translation": [
-        3.287658214569092,
-        2.5669071674346924,
-        1.450688123703003
+        2.6583492755889893,
+        2.110910177230835,
+        1.6900568008422852
       ]
     },
     {
@@ -90,6 +101,25 @@
         0,
         2.520029067993164,
         0.4997783303260803
+      ]
+    },
+    {
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 1
+        }
+      },
+      "name": "Sun",
+      "rotation": [
+        0.5250449776649475,
+        -0.3704172968864441,
+        0.16144990921020508,
+        0.7490345239639282
+      ],
+      "translation": [
+        -4.092644214630127,
+        -4.446865558624268,
+        1.9868271350860596
       ]
     }
   ],
@@ -333,7 +363,7 @@
     {
       "bufferView": 10,
       "componentType": 5126,
-      "count": 1984,
+      "count": 559,
       "max": [
         0.9999997019767761,
         1,
@@ -349,32 +379,32 @@
     {
       "bufferView": 11,
       "componentType": 5126,
-      "count": 1984,
+      "count": 559,
       "type": "VEC3"
     },
     {
       "bufferView": 12,
       "componentType": 5126,
-      "count": 1984,
+      "count": 559,
       "type": "VEC2"
     },
     {
       "bufferView": 13,
       "componentType": 5126,
-      "count": 1984,
+      "count": 559,
       "type": "VEC4"
     },
     {
       "bufferView": 14,
       "componentType": 5121,
-      "count": 1984,
+      "count": 559,
       "normalized": true,
       "type": "VEC4"
     },
     {
       "bufferView": 15,
       "componentType": 5123,
-      "count": 1984,
+      "count": 559,
       "normalized": true,
       "type": "VEC4"
     },
@@ -448,44 +478,44 @@
     },
     {
       "buffer": 0,
-      "byteLength": 23808,
+      "byteLength": 6708,
       "byteOffset": 251136,
       "target": 34962
     },
     {
       "buffer": 0,
-      "byteLength": 23808,
-      "byteOffset": 274944,
+      "byteLength": 6708,
+      "byteOffset": 257844,
       "target": 34962
     },
     {
       "buffer": 0,
-      "byteLength": 15872,
-      "byteOffset": 298752,
+      "byteLength": 4472,
+      "byteOffset": 264552,
       "target": 34962
     },
     {
       "buffer": 0,
-      "byteLength": 31744,
-      "byteOffset": 314624,
+      "byteLength": 8944,
+      "byteOffset": 269024,
       "target": 34962
     },
     {
       "buffer": 0,
-      "byteLength": 7936,
-      "byteOffset": 346368,
+      "byteLength": 2236,
+      "byteOffset": 277968,
       "target": 34962
     },
     {
       "buffer": 0,
-      "byteLength": 15872,
-      "byteOffset": 354304,
+      "byteLength": 4472,
+      "byteOffset": 280204,
       "target": 34962
     },
     {
       "buffer": 0,
       "byteLength": 5760,
-      "byteOffset": 370176,
+      "byteOffset": 284676,
       "target": 34963
     }
   ],
@@ -498,7 +528,7 @@
   "buffers": [
     {
       "uri": "Scene1_data.bin",
-      "byteLength": 375936
+      "byteLength": 290436
     }
   ]
 }

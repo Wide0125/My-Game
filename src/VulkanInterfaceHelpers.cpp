@@ -1,6 +1,5 @@
 #include <fstream>
 
-#include "Scene.hpp"
 #include "VulkanInterface.hpp"
 
 // initVulkan helper functions
@@ -15,15 +14,13 @@ bool VulkanInterface::isDeviceSuitable(const vk::raii::PhysicalDevice& physicalD
 			return static_cast<bool>(queueFamily.queueFlags & vk::QueueFlagBits::eGraphics);
 		})
 	};
-
-	std::vector<std::string> requiredDeviceExtensions {vk::KHRSwapchainExtensionName};
 	auto availableDeviceExtensions {physicalDevice.enumerateDeviceExtensionProperties()};
 
 	bool supportsAllExtensions {true};
-	for (const auto& requiredDeviceExtension: requiredDeviceExtensions) {
+	for (const auto& requiredDeviceExtension: m_requiredDeviceExtensions) {
 		bool supportsExtension {false};
 		for (const auto& availableDeviceExtension: availableDeviceExtensions) {
-			if (requiredDeviceExtension == availableDeviceExtension.extensionName) {
+			if (strcmp(requiredDeviceExtension, availableDeviceExtension.extensionName) == 0) {
 				supportsExtension = true;
 				break;
 			}
