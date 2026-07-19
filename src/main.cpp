@@ -17,6 +17,9 @@ int main() {
 	auto* window {renderer.getWindow()};
 
 	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	if (glfwRawMouseMotionSupported()) {
+		glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+	}
 
 	double prevXPos {0.0};
 	double prevYPos {0.0};

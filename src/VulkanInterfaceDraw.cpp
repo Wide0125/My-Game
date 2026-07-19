@@ -109,19 +109,19 @@ void VulkanInterface::drawFrame() {
 	Camera& sceneCamera {m_currentScene->sceneCamera};
 	VPTransformBufferObject vpTransform {
 		sceneCamera.getCameraPosition(),
-			lookAt(
-				sceneCamera.getCameraPosition(),
-				sceneCamera.getCameraPosition() + sceneCamera.getLookAtVector(),
-				sceneCamera.getUp()
-			),
-			glm::perspective(
-				glm::radians(45.0f),
-				static_cast<float>(m_swapChainExtent.width) /
-					static_cast<float>(m_swapChainExtent.height),
-				0.1f,
-				100.0f
-			),
-			static_cast<int>(m_currentScene->getLights().size())
+		lookAt(
+			sceneCamera.getCameraPosition(),
+			sceneCamera.getCameraPosition() + sceneCamera.getLookAtVector(),
+			sceneCamera.getUp()
+		),
+		glm::perspective(
+			glm::radians(45.0f),
+			static_cast<float>(m_swapChainExtent.width) /
+				static_cast<float>(m_swapChainExtent.height),
+			0.1f,
+			100.0f
+		),
+		static_cast<int>(m_currentScene->getLights().size())
 	};
 	vpTransform.projectionTransform[1][1] *= -1;
 	vmaCopyMemoryToAllocation(
@@ -147,31 +147,29 @@ void VulkanInterface::drawFrame() {
 		sizeof(ModelTransformBufferObject) * modelTransforms.size()
 	);
 
+	commandBuffer.bindVertexBuffers(0, *m_vertexBuffer, {0});
+	commandBuffer.bindIndexBuffer(m_indexBuffer, 0, vk::IndexType::eUint32);
+
 	uint32_t offset {0};
-	for (uint32_t meshIndex {0}; meshIndex < m_currentScene->getModelInstancesPerMesh().size(); ++meshIndex) {
-		auto& commandBuffer {m_commandBuffers[m_frameIndex]};
-		const MeshBuffers& currMeshBuffers {m_meshes[meshIndex]};
-		commandBuffer.bindVertexBuffers(0, *currMeshBuffers.vertexBuffer, {0});
-		for (
-			size_t primitiveIndex {}; primitiveIndex < currMeshBuffers.indexBuffers.size();
-			++primitiveIndex
-		) {
-			commandBuffer.bindIndexBuffer(
-				currMeshBuffers.indexBuffers[primitiveIndex], 0, vk::IndexType::eUint32
-			);
-			PushConstants matrixTextureIndices {meshIndex};
+	for (
+		uint32_t meshIndex {0}; meshIndex < m_currentScene->getModelInstancesPerMesh().size();
+		++meshIndex
+	) {
+		const Mesh& currMesh {m_meshes[meshIndex]};
+		for (const auto& subMesh: currMesh.subMeshes) {
+			PushConstants materialIndex {subMesh.materialIndex};
 			commandBuffer.pushConstants<PushConstants>(
 				m_pipelineLayout,
 				vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
 				0,
-				matrixTextureIndices
+				materialIndex
 			);
 
 			commandBuffer.drawIndexed(
-				currMeshBuffers.indicesCount,
+				subMesh.indexCount,
 				m_currentScene->getModelInstancesPerMesh()[meshIndex],
-				0,
-				0,
+				subMesh.indexStart,
+				subMesh.vertexOffset,
 				offset
 			);
 			offset += m_currentScene->getModelInstancesPerMesh()[meshIndex];

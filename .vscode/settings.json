@@ -1,9 +1,11 @@
 {
   "cSpell.words": [
     "basisu",
+    "blas",
     "blitting",
     "fastgltf",
     "fmat",
+    "GLFW",
     "Gltf",
     "isnan",
     "lerp",
@@ -14,6 +16,8 @@
     "Ndot",
     "Schlick",
     "Swapchain",
-    "TINYGLTF"
+    "TINYGLTF",
+    "tlas",
+    "VULKANINTERFACE"
   ]
 }

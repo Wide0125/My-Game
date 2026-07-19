@@ -24,6 +24,7 @@ void VulkanInterface::loadScene(const fastgltf::Asset& asset, Scene* scene) {
 	createTextureImages(asset);
 	createTextureSamplers(asset);
 	loadMeshes(asset);
+	createAccelerationStructures();
 	loadMaterials(asset);
 	createBuffers(asset);
 	createDescriptorSets(asset);
@@ -143,7 +144,7 @@ void VulkanInterface::createTextureImages(const fastgltf::Asset& asset) {
 	for (const auto& texture: asset.textures) {
 	}
 }
-void VulkanInterface::createTextureSamplers(const fastgltf::Asset& asset) {	
+void VulkanInterface::createTextureSamplers(const fastgltf::Asset& asset) {
 	m_textureSamplers.clear();
 	m_textureSamplers.reserve(asset.samplers.size());
 	for (const auto& sampler: asset.samplers) {
@@ -225,148 +226,144 @@ void VulkanInterface::createTextureSamplers(const fastgltf::Asset& asset) {
 }
 
 void VulkanInterface::loadMeshes(const fastgltf::Asset& asset) {
-	destroyMeshes();
 	m_meshes.reserve(asset.meshes.size());
-	for (const auto& mesh: asset.meshes) {
-		size_t positionsCount {0};
-		size_t hasIndicesCount {0};
-		size_t hasMaterialCount {0};
-		for (const auto& primitive: mesh.primitives) {
-			positionsCount +=
-				asset.accessors[primitive.findAttribute("POSITION")->accessorIndex].count;
-			hasIndicesCount += primitive.indicesAccessor.has_value() ? 1 : 0;
-		}
-		std::vector<glm::vec3> positions(positionsCount);
-		std::vector<glm::vec3> normals(positionsCount);
-		std::vector<glm::vec4> colors(positionsCount);
-		std::vector<glm::vec2> texCoords(positionsCount);
-		std::vector<glm::vec4> tangents(positionsCount);
 
-		std::vector<vk::raii::Buffer> indexBuffers {};
-		std::vector<VmaAllocation> indexBufferAllocations {};
-		uint32_t indicesCount {0};
-		indexBuffers.reserve(hasIndicesCount);
-		indexBufferAllocations.reserve(hasIndicesCount);
-		std::vector<uint32_t> materialIndices {};
-		materialIndices.reserve(hasIndicesCount);
-		size_t offset {0};
+	std::vector<glm::vec3> positions {};
+	std::vector<glm::vec3> normals {};
+	std::vector<glm::vec4> colors {};
+	std::vector<glm::vec2> texCoords {};
+	std::vector<glm::vec4> tangents {};
+
+	std::vector<uint32_t> indices {};
+
+	uint32_t verticesRunningCount {0};
+	uint32_t indicesRunningCount {0};
+
+	for (const auto& mesh: asset.meshes) {
+		std::vector<Mesh::SubMesh> subMeshes {};
+		subMeshes.reserve(mesh.primitives.size());
+		m_subMeshCount += mesh.primitives.size();
+
 		for (const auto& primitive: mesh.primitives) {
+
+			Mesh::SubMesh subMesh {.indexStart = indicesRunningCount};
+
 			const auto& positionAccessor { // load vertices
 				asset.accessors[primitive.findAttribute("POSITION")->accessorIndex]
 			};
+
+			size_t vertexCount {positionAccessor.count};
+			positions.resize(positions.size() + vertexCount);
+			normals.resize(normals.size() + vertexCount);
+			colors.resize(colors.size() + vertexCount);
+			texCoords.resize(texCoords.size() + vertexCount);
+			tangents.resize(tangents.size() + vertexCount);
+
 			fastgltf::copyFromAccessor<glm::vec3>(
-				asset, positionAccessor, positions.data() + offset
+				asset, positionAccessor, positions.data() + verticesRunningCount
 			);
 			const auto normalIt {primitive.findAttribute("NORMAL")}; // load normals
-			if (normalIt != primitive.attributes.end()) {
-				const auto& normalsAccessor {asset.accessors[normalIt->accessorIndex]};
-				fastgltf::copyFromAccessor<glm::vec3>(
-					asset, normalsAccessor, normals.data() + offset
-				);
-			}
+			const auto& normalsAccessor {asset.accessors[normalIt->accessorIndex]};
+			fastgltf::copyFromAccessor<glm::vec3>(
+				asset, normalsAccessor, normals.data() + verticesRunningCount
+			);
 			const auto colorIt {primitive.findAttribute("COLOR_0")}; // load colors
 			if (colorIt != primitive.attributes.end()) {
 				const auto& colorsAccessor {asset.accessors[colorIt->accessorIndex]};
 				fastgltf::copyFromAccessor<glm::vec4>(
-					asset, colorsAccessor, colors.data() + offset
+					asset, colorsAccessor, colors.data() + verticesRunningCount
 				);
 			}
 			const auto texCoordsIt {primitive.findAttribute("TEXCOORD_0")}; // load UVs
-			if (texCoordsIt != primitive.attributes.end()) {
-				const auto& texCoordsAccessor {asset.accessors[texCoordsIt->accessorIndex]};
-				fastgltf::copyFromAccessor<glm::vec2>(
-					asset, texCoordsAccessor, texCoords.data() + offset
-				);
-			}
-			const auto tangentIt {primitive.findAttribute("TANGENT")};
-			if (tangentIt != primitive.attributes.end()) {
-				const auto& tangentAccessor {asset.accessors[tangentIt->accessorIndex]};
-				fastgltf::copyFromAccessor<glm::vec4>(asset, tangentAccessor, tangents.data() + offset);
-			}
+			const auto& texCoordsAccessor {asset.accessors[texCoordsIt->accessorIndex]};
+			fastgltf::copyFromAccessor<glm::vec2>(
+				asset, texCoordsAccessor, texCoords.data() + verticesRunningCount
+			);
 
-			std::vector<uint32_t> indices {}; // load indices
+			const auto tangentIt {primitive.findAttribute("TANGENT")};
+			const auto& tangentAccessor {asset.accessors[tangentIt->accessorIndex]};
+			fastgltf::copyFromAccessor<glm::vec4>(
+				asset, tangentAccessor, tangents.data() + verticesRunningCount
+			);
+
 			assert(primitive.indicesAccessor.has_value());
 			const auto& indicesAccessor {asset.accessors[primitive.indicesAccessor.value()]};
-			indices.resize(indicesAccessor.count);
-			fastgltf::copyFromAccessor<uint32_t>(asset, indicesAccessor, indices.data());
-			indicesCount += indicesAccessor.count;
-			vk::raii::Buffer stagingBuffer {nullptr};
-			VmaAllocation stagingAllocation {};
-			vk::DeviceSize bufferSize {sizeof(indices[0]) * indices.size()};
-			createBuffer(
-				bufferSize,
-				vk::BufferUsageFlagBits::eTransferSrc,
-				VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
-				stagingBuffer,
-				stagingAllocation
-			);
-			vmaCopyMemoryToAllocation(
-				m_allocator, indices.data(), stagingAllocation, 0, bufferSize
-			);
-			vk::raii::Buffer indexBuffer {nullptr};
-			VmaAllocation indexBufferAllocation {};
-			createBuffer(
-				bufferSize,
-				vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer,
-				{},
-				indexBuffer,
-				indexBufferAllocation
-			);
-			copyBuffer(stagingBuffer, indexBuffer, bufferSize);
-			vmaDestroyBuffer(m_allocator, stagingBuffer.release(), stagingAllocation);
-
-			indexBuffers.push_back(std::move(indexBuffer));
-			indexBufferAllocations.push_back(std::move(indexBufferAllocation));
+			indices.resize(indices.size() + indicesAccessor.count);
+			fastgltf::copyFromAccessor<uint32_t>(asset, indicesAccessor, indices.data() + indicesRunningCount);
+			subMesh.indexCount = indicesAccessor.count;
+			subMesh.vertexOffset = verticesRunningCount;
 
 			if (primitive.materialIndex.has_value()) {
-				materialIndices.push_back(primitive.materialIndex.has_value());
+				subMesh.materialIndex = primitive.materialIndex.value();
 			} else {
-				materialIndices.push_back(-1);
+				subMesh.materialIndex = (-1);
 			}
 
-			offset += positionAccessor.count;
+			verticesRunningCount += vertexCount;
+			indicesRunningCount += indicesAccessor.count;
+
+			subMeshes.push_back(std::move(subMesh));
 		}
-		std::vector<Vertex> vertices {};
-		vertices.reserve(positions.size());
-		for (size_t i {0}; i < positions.size(); ++i) {
-			vertices.emplace_back(positions[i], normals[i], colors[i], texCoords[i], tangents[i]);
-		}
-
-		vk::raii::Buffer stagingBuffer {nullptr};
-		VmaAllocation stagingAllocation {};
-		vk::DeviceSize bufferSize {sizeof(vertices[0]) * vertices.size()};
-		createBuffer(
-			bufferSize,
-			vk::BufferUsageFlagBits::eTransferSrc,
-			VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
-			stagingBuffer,
-			stagingAllocation
-		);
-		vmaCopyMemoryToAllocation(m_allocator, vertices.data(), stagingAllocation, 0, bufferSize);
-
-		vk::raii::Buffer vertexBuffer {nullptr};
-		VmaAllocation vertexAllocation {};
-		createBuffer(
-			bufferSize,
-			vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
-			{},
-			vertexBuffer,
-			vertexAllocation
-		);
-		copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
-		vmaDestroyBuffer(m_allocator, stagingBuffer.release(), stagingAllocation);
-
-		m_meshes.push_back(
-			MeshBuffers {
-				std::move(vertexBuffer),
-				std::move(vertexAllocation),
-				std::move(indexBuffers),
-				std::move(indexBufferAllocations),
-				indicesCount,
-				materialIndices
-			}
-		);
+		m_meshes.emplace_back(std::move(subMeshes));
 	}
+	std::vector<Vertex> vertices {};
+	vertices.reserve(positions.size());
+	for (size_t i {0}; i < positions.size(); ++i) {
+		vertices.emplace_back(positions[i], normals[i], colors[i], texCoords[i], tangents[i]);
+	}
+
+	vk::raii::Buffer stagingBuffer {nullptr};
+	VmaAllocation stagingAllocation {};
+	vk::DeviceSize bufferSize {sizeof(vertices[0]) * vertices.size()};
+	createBuffer(
+		bufferSize,
+		vk::BufferUsageFlagBits::eTransferSrc,
+		VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+		stagingBuffer,
+		stagingAllocation
+	);
+	vmaCopyMemoryToAllocation(m_allocator, vertices.data(), stagingAllocation, 0, bufferSize);
+
+	createBuffer(
+		bufferSize,
+		vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
+		{},
+		m_vertexBuffer,
+		m_vertexAllocation
+	);
+	copyBuffer(stagingBuffer, m_vertexBuffer, bufferSize);
+	vmaDestroyBuffer(m_allocator, stagingBuffer.release(), stagingAllocation);
+	
+	bufferSize = sizeof(indices[0]) * indices.size();
+	createBuffer(
+		bufferSize,
+		vk::BufferUsageFlagBits::eTransferSrc,
+		VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+		stagingBuffer,
+		stagingAllocation
+	);
+	vmaCopyMemoryToAllocation(m_allocator, indices.data(), stagingAllocation, 0, bufferSize);
+
+	createBuffer(
+		bufferSize,
+		vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer,
+		{},
+		m_indexBuffer,
+		m_indexAllocation
+	);
+	copyBuffer(stagingBuffer, m_indexBuffer, bufferSize);
+
+	vmaDestroyBuffer(m_allocator, stagingBuffer.release(), stagingAllocation);
+}
+
+void VulkanInterface::createAccelerationStructures() {
+	vk::DeviceAddress vertexAddress {m_device.getBufferAddress({.buffer = m_vertexBuffer})};
+	vk::DeviceAddress indexAddress {m_device.getBufferAddress({.buffer = m_indexBuffer})};
+
+	m_blasInstances.reserve(m_subMeshCount);
+	m_blasBuffers.reserve(m_subMeshCount);
+	m_blasAllocations.reserve(m_subMeshCount);
+	m_blasHandles.reserve(m_subMeshCount);
 }
 
 void VulkanInterface::loadMaterials(const fastgltf::Asset& asset) {

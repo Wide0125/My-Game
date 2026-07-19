@@ -16,8 +16,6 @@ import vulkan_hpp;
 
 #include "fastgltf/types.hpp"
 
-#include "MeshBuffers.hpp"
-
 class Scene;
 
 struct ModelTransformBufferObject {
@@ -33,7 +31,7 @@ struct VPTransformBufferObject {
 };
 
 struct PushConstants {
-	uint32_t textureIndex {};
+	uint32_t materialIndex {};
 };
 
 struct Vertex {
@@ -105,8 +103,6 @@ class VulkanInterface {
 
 	void waitIdle() { m_device.waitIdle(); }
 
-	const MeshBuffers& getMeshBuffers(size_t index) const { return m_meshes[index]; }
-
 	void drawFrame();
 
 	GLFWwindow* const getWindow() const { return m_window; }
@@ -116,6 +112,8 @@ class VulkanInterface {
 
 	static constexpr int WIDTH {800};
 	static constexpr int HEIGHT {600};
+
+	bool rayTracingAvailable {false};
 
 	GLFWwindow* m_window {nullptr}; // GLFW window object
 
@@ -133,7 +131,11 @@ class VulkanInterface {
 	vk::raii::Device m_device {nullptr}; // interface to interact with GPU
 	uint32_t m_queueFamilyIndex {~0u};	 // index of selected queue family
 	vk::raii::Queue m_queue {nullptr};	 // selected queue
-	std::vector<const char*> m_requiredDeviceExtensions {vk::KHRSwapchainExtensionName, vk::KHRAccelerationStructureExtensionName, vk::KHRRayQueryExtensionName};
+	std::vector<const char*> m_requiredDeviceExtensions {
+		vk::KHRSwapchainExtensionName,
+		vk::KHRAccelerationStructureExtensionName,
+		vk::KHRRayQueryExtensionName
+	};
 
 	VmaAllocator m_allocator {};
 
@@ -150,22 +152,21 @@ class VulkanInterface {
 	VmaAllocation m_depthImageAllocation {nullptr};
 	vk::raii::ImageView m_depthImageView {nullptr};
 
-	std::vector<MeshBuffers> m_meshes {};
-	void destroyMeshes() {
-		for (auto& meshBuffers: m_meshes) {
-			vmaDestroyBuffer(
-				m_allocator, meshBuffers.vertexBuffer.release(), meshBuffers.vertexAllocation
-			);
-			for (size_t i {0}; i < meshBuffers.indexBuffers.size(); ++i) {
-				vmaDestroyBuffer(
-					m_allocator,
-					meshBuffers.indexBuffers[i].release(),
-					meshBuffers.indexAllocations[i]
-				);
-			}
-		}
-		m_meshes.clear();
-	}
+	vk::raii::Buffer m_vertexBuffer {nullptr};
+	VmaAllocation m_vertexAllocation {};
+	vk::raii::Buffer m_indexBuffer {nullptr};
+	VmaAllocation m_indexAllocation {};
+	struct Mesh {
+		struct SubMesh {
+			uint32_t indexStart {};
+			uint32_t indexCount {};
+			uint32_t vertexOffset {};
+			uint32_t materialIndex {};
+		};
+		std::vector<SubMesh> subMeshes {};
+	};
+	std::vector<Mesh> m_meshes {};
+	int m_subMeshCount {0};
 
 	std::vector<vk::raii::Semaphore> m_presentCompleteSemaphores {};
 	std::vector<vk::raii::Semaphore> m_renderFinishedSemaphores {};
@@ -199,6 +200,20 @@ class VulkanInterface {
 	vk::raii::Pipeline m_graphicsPipeline {nullptr};
 	vk::raii::PipelineLayout m_pipelineLayout {nullptr};
 
+	std::vector<vk::raii::Buffer> m_blasBuffers {};
+	std::vector<VmaAllocation> m_blasAllocations {};
+	std::vector<vk::raii::AccelerationStructureKHR> m_blasHandles {};
+
+	std::vector<vk::AccelerationStructureInstanceKHR> m_blasInstances {};
+	vk::raii::Buffer m_blasInstanceBuffer {nullptr};
+	VmaAllocation m_blasInstanceAllocation {};
+
+	vk::raii::Buffer m_tlasBuffer {nullptr};
+	VmaAllocation m_tlasAllocation {nullptr};
+	vk::raii::Buffer m_tlasScratchBuffer {nullptr};
+	VmaAllocation m_tlasScratchAllocation {nullptr};
+	vk::raii::AccelerationStructureKHR m_tlas {nullptr};
+
 	uint32_t m_frameIndex {0};
 
 	void initWindow(); // initialize GLFW window for Vulkan
@@ -207,7 +222,8 @@ class VulkanInterface {
 		m_textureImages.clear();
 		vmaDestroyImage(m_allocator, m_depthImage.release(), m_depthImageAllocation);
 		vmaDestroyBuffer(m_allocator, m_materialBuffer.release(), m_materialAllocation);
-		destroyMeshes();
+		vmaDestroyBuffer(m_allocator, m_vertexBuffer.release(), m_vertexAllocation);
+		vmaDestroyBuffer(m_allocator, m_indexBuffer.release(), m_indexAllocation);
 		for (int i {0}; i < MAX_FRAMES_IN_FLIGHT; ++i) {
 			vmaDestroyBuffer(
 				m_allocator, m_modelTransformBuffers[i].release(), m_modelTransformAllocations[i]
@@ -290,6 +306,8 @@ class VulkanInterface {
 	void
 	copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuffer, vk::DeviceSize size) const;
 	void loadMeshes(const fastgltf::Asset&);
+
+	void createAccelerationStructures();
 
 	void loadMaterials(const fastgltf::Asset&);
 
