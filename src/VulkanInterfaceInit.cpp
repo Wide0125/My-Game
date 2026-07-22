@@ -123,6 +123,15 @@ void VulkanInterface::pickPhysicalDevice() {
 		throw std::runtime_error("Failed to find a suitable GPU!");
 	}
 	m_physicalDevice = *devicesIt;
+	vk::StructureChain<
+		vk::PhysicalDeviceProperties2,
+		vk::PhysicalDeviceAccelerationStructurePropertiesKHR>
+		physicalDeviceProperties {m_physicalDevice.getProperties2<
+			vk::PhysicalDeviceProperties2,
+			vk::PhysicalDeviceAccelerationStructurePropertiesKHR>()};
+	m_accelerationStructureScratchOffset =
+		physicalDeviceProperties.get<vk::PhysicalDeviceAccelerationStructurePropertiesKHR>()
+			.minAccelerationStructureScratchOffsetAlignment;
 }
 void VulkanInterface::createLogicalDevice() {
 	std::vector<vk::QueueFamilyProperties> queueFamilies {
@@ -150,15 +159,21 @@ void VulkanInterface::createLogicalDevice() {
 		vk::PhysicalDeviceFeatures2,
 		vk::PhysicalDeviceVulkan12Features,
 		vk::PhysicalDeviceVulkan13Features,
-		vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>
+		vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT,
+		vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
+		vk::PhysicalDeviceRayQueryFeaturesKHR>
 		featureChain {
 			{.features = {.samplerAnisotropy = true}}, // vk::PhysicalDeviceFeatures2
 			{										   // .descriptorBindingPartiallyBound = true,
-			  .runtimeDescriptorArray = true
+			  .runtimeDescriptorArray = true,
+			  .scalarBlockLayout = true,
+			  .bufferDeviceAddress = true
 			},
 			{.synchronization2 = true,
-			 .dynamicRendering = true},	   // vk::PhysicalDeviceVulkan13Features
-			{.extendedDynamicState = true} // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
+			 .dynamicRendering = true},		// vk::PhysicalDeviceVulkan13Features
+			{.extendedDynamicState = true}, // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
+			{.accelerationStructure = true},
+			{.rayQuery = true}
 		};
 
 	// create a device
@@ -179,6 +194,7 @@ void VulkanInterface::createLogicalDevice() {
 
 void VulkanInterface::createVmaAllocator() {
 	VmaAllocatorCreateInfo allocatorCreateInfo {
+		.flags = VmaAllocatorCreateFlagBits::VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
 		.physicalDevice = *m_physicalDevice,
 		.device = *m_device,
 		.instance = *m_instance,

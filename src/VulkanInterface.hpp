@@ -134,7 +134,10 @@ class VulkanInterface {
 	std::vector<const char*> m_requiredDeviceExtensions {
 		vk::KHRSwapchainExtensionName,
 		vk::KHRAccelerationStructureExtensionName,
-		vk::KHRRayQueryExtensionName
+		vk::KHRRayQueryExtensionName,
+		vk::KHRAccelerationStructureExtensionName,
+		vk::KHRDeferredHostOperationsExtensionName,
+		vk::KHRBufferDeviceAddressExtensionName
 	};
 
 	VmaAllocator m_allocator {};
@@ -160,6 +163,7 @@ class VulkanInterface {
 		struct SubMesh {
 			uint32_t indexStart {};
 			uint32_t indexCount {};
+			uint32_t maxIndex {};
 			uint32_t vertexOffset {};
 			uint32_t materialIndex {};
 		};
@@ -214,6 +218,8 @@ class VulkanInterface {
 	VmaAllocation m_tlasScratchAllocation {nullptr};
 	vk::raii::AccelerationStructureKHR m_tlas {nullptr};
 
+	vk::DeviceSize m_accelerationStructureScratchOffset {};
+
 	uint32_t m_frameIndex {0};
 
 	void initWindow(); // initialize GLFW window for Vulkan
@@ -233,6 +239,14 @@ class VulkanInterface {
 			);
 			vmaDestroyBuffer(m_allocator, m_lightBuffers[i].release(), m_lightAllocations[i]);
 		}
+		for (int blasIndex {0}; blasIndex < m_blasBuffers.size(); ++blasIndex) {
+			vmaDestroyBuffer(
+				m_allocator, m_blasBuffers[blasIndex].release(), m_blasAllocations[blasIndex]
+			);
+		}
+		vmaDestroyBuffer(m_allocator, m_blasInstanceBuffer.release(), m_blasInstanceAllocation);
+		vmaDestroyBuffer(m_allocator, m_tlasBuffer.release(), m_tlasAllocation);
+		vmaDestroyBuffer(m_allocator, m_tlasScratchBuffer.release(), m_tlasScratchAllocation);
 		vmaDestroyAllocator(m_allocator);
 		glfwDestroyWindow(m_window);
 		glfwTerminate();
@@ -278,7 +292,8 @@ class VulkanInterface {
 		vk::BufferUsageFlags,
 		VmaAllocationCreateFlags,
 		vk::raii::Buffer&,
-		VmaAllocation&
+		VmaAllocation&,
+		vk::DeviceSize = 0
 	) const;
 
 	void createCommandBuffers();
@@ -335,6 +350,7 @@ class VulkanInterface {
 		vk::PipelineStageFlags2,
 		vk::ImageAspectFlags
 	);
+	void updateTlas();
 	void recreateSwapChain();
 };
 

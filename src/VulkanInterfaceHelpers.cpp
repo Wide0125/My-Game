@@ -2,6 +2,8 @@
 
 #include "VulkanInterface.hpp"
 
+#include "Scene.hpp"
+
 // initVulkan helper functions
 bool VulkanInterface::isDeviceSuitable(const vk::raii::PhysicalDevice& physicalDevice) const {
 	bool supportsVulkan1_3 {
@@ -141,7 +143,8 @@ void VulkanInterface::createBuffer(
 	vk::BufferUsageFlags usage,
 	VmaAllocationCreateFlags allocFlags,
 	vk::raii::Buffer& buffer,
-	VmaAllocation& allocation
+	VmaAllocation& allocation,
+	vk::DeviceSize minAlignment
 ) const {
 	VkBufferCreateInfo bufferInfo {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
 	bufferInfo.size = size;
@@ -150,6 +153,7 @@ void VulkanInterface::createBuffer(
 	VmaAllocationCreateInfo allocInfo {};
 	allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
 	allocInfo.flags = allocFlags;
+	allocInfo.minAlignment = minAlignment;
 
 	VkBuffer bufferTemp;
 	if (vmaCreateBuffer(m_allocator, &bufferInfo, &allocInfo, &bufferTemp, &allocation, nullptr) !=
@@ -206,13 +210,15 @@ void VulkanInterface::copyBuffer(
 }
 
 void VulkanInterface::createDescriptorPool(uint32_t textureCount) {
-	std::array<vk::DescriptorPoolSize, 5> poolSize {
+	std::array<vk::DescriptorPoolSize, 6> poolSize {
 		{{.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eCombinedImageSampler,
 		  .descriptorCount = textureCount * MAX_FRAMES_IN_FLIGHT},
-		 {.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT}}
+		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eAccelerationStructureKHR,
+		  .descriptorCount = MAX_FRAMES_IN_FLIGHT}}
 	};
 	vk::DescriptorPoolCreateInfo poolInfo {
 		.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
@@ -224,16 +230,25 @@ void VulkanInterface::createDescriptorPool(uint32_t textureCount) {
 }
 vk::raii::DescriptorSetLayout
 VulkanInterface::createDescriptorSetLayout(uint32_t textureCount) const {
-	std::array<vk::DescriptorSetLayoutBinding, 5> bindings {
+	std::array<vk::DescriptorSetLayoutBinding, 6> bindings {
 		{{0, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr},
-		 {1, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr},
+		 {1,
+		  vk::DescriptorType::eUniformBuffer,
+		  1,
+		  vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+		  nullptr},
 		 {2, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eFragment, nullptr},
 		 {3,
 		  vk::DescriptorType::eCombinedImageSampler,
 		  textureCount,
 		  vk::ShaderStageFlagBits::eFragment,
 		  nullptr},
-		 {4, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eFragment, nullptr}}
+		 {4, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eFragment, nullptr},
+		 {5,
+		  vk::DescriptorType::eAccelerationStructureKHR,
+		  1,
+		  vk::ShaderStageFlagBits::eFragment,
+		  nullptr}}
 	};
 	vk::DescriptorSetLayoutCreateInfo layoutInfo {
 		.bindingCount = static_cast<uint32_t>(bindings.size()), .pBindings = bindings.data()
@@ -336,4 +351,108 @@ void VulkanInterface::transition_image_layout(
 		.dependencyFlags = {}, .imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier
 	};
 	m_commandBuffers[m_frameIndex].pipelineBarrier2(dependency_info);
+}
+void VulkanInterface::updateTlas() {
+	for (
+		int modelInstanceIndex {0};
+		modelInstanceIndex < m_currentScene->getModelInstanceTransforms().size();
+		++modelInstanceIndex
+	) {
+		glm::mat4 currTransform {
+			m_currentScene->getModelInstanceTransforms()[modelInstanceIndex].modelTransform
+		};
+		vk::TransformMatrixKHR transformMatrix {};
+		transformMatrix.matrix = std::array<std::array<float, 4>, 3> {
+			{{currTransform[0][0], currTransform[1][0], currTransform[2][0], currTransform[3][0]},
+			 {currTransform[0][1], currTransform[1][1], currTransform[2][1], currTransform[3][1]},
+			 {currTransform[0][2], currTransform[1][2], currTransform[2][2], currTransform[3][2]}}
+		};
+		m_blasInstances[modelInstanceIndex].setTransform(transformMatrix);
+	}
+
+	vk::DeviceSize instanceBufferSize = sizeof(m_blasInstances[0]) * m_blasInstances.size();
+
+	vmaCopyMemoryToAllocation(
+		m_allocator, m_blasInstances.data(), m_blasInstanceAllocation, 0, instanceBufferSize
+	);
+
+	vk::BufferDeviceAddressInfo instanceAddressInfo {.buffer = m_blasInstanceBuffer};
+	vk::DeviceAddress instanceAddress = m_device.getBufferAddressKHR(instanceAddressInfo);
+
+	// Prepare the geometry (instance) data
+	auto instancesData = vk::AccelerationStructureGeometryInstancesDataKHR {
+		.arrayOfPointers = vk::False, .data = instanceAddress
+	};
+
+	vk::AccelerationStructureGeometryDataKHR geometryData(instancesData);
+
+	vk::AccelerationStructureGeometryKHR tlasGeometry {
+		.geometryType = vk::GeometryTypeKHR::eInstances, .geometry = geometryData
+	};
+
+	// TASK06: Note the new parameters to re-build the TLAS in-place
+	vk::AccelerationStructureBuildGeometryInfoKHR tlasBuildGeometryInfo {
+		.type = vk::AccelerationStructureTypeKHR::eTopLevel,
+		.flags = vk::BuildAccelerationStructureFlagBitsKHR::eAllowUpdate,
+		.mode = vk::BuildAccelerationStructureModeKHR::eUpdate,
+		.srcAccelerationStructure = m_tlas,
+		.dstAccelerationStructure = m_tlas,
+		.geometryCount = 1,
+		.pGeometries = &tlasGeometry
+	};
+
+	vk::BufferDeviceAddressInfo scratchAddressInfo {.buffer = *m_tlasScratchBuffer};
+	vk::DeviceAddress scratchAddr = m_device.getBufferAddressKHR(scratchAddressInfo);
+	tlasBuildGeometryInfo.scratchData.deviceAddress = scratchAddr;
+
+	// Prepare the build range for the TLAS
+	vk::AccelerationStructureBuildRangeInfoKHR tlasRangeInfo {
+		.primitiveCount = static_cast<uint32_t>(m_blasInstances.size()),
+		.primitiveOffset = 0,
+		.firstVertex = 0,
+		.transformOffset = 0
+	};
+
+	// Re-build the TLAS
+	auto cmd = beginSingleTimeCommands();
+
+	// Pre-build barrier
+	vk::MemoryBarrier preBarrier {
+		.srcAccessMask = vk::AccessFlagBits::eAccelerationStructureWriteKHR |
+						 vk::AccessFlagBits::eTransferWrite | vk::AccessFlagBits::eShaderRead,
+		.dstAccessMask = vk::AccessFlagBits::eAccelerationStructureReadKHR |
+						 vk::AccessFlagBits::eAccelerationStructureWriteKHR
+	};
+
+	cmd->pipelineBarrier(
+		vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR |
+			vk::PipelineStageFlagBits::eTransfer |
+			vk::PipelineStageFlagBits::eFragmentShader,			   // srcStageMask
+		vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR, // dstStageMask
+		{},														   // dependencyFlags
+		preBarrier,												   // memoryBarriers
+		{},														   // bufferMemoryBarriers
+		{}														   // imageMemoryBarriers
+	);
+
+	cmd->buildAccelerationStructuresKHR({tlasBuildGeometryInfo}, {&tlasRangeInfo});
+
+	// Post-build barrier
+	vk::MemoryBarrier postBarrier {
+		.srcAccessMask = vk::AccessFlagBits::eAccelerationStructureWriteKHR,
+		.dstAccessMask =
+			vk::AccessFlagBits::eAccelerationStructureReadKHR | vk::AccessFlagBits::eShaderRead
+	};
+
+	cmd->pipelineBarrier(
+		vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR, // srcStageMask
+		vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR |
+			vk::PipelineStageFlagBits::eFragmentShader, // dstStageMask
+		{},												// dependencyFlags
+		postBarrier,									// memoryBarriers
+		{},												// bufferMemoryBarriers
+		{}												// imageMemoryBarriers
+	);
+
+	endSingleTimeCommands(*cmd);
 }

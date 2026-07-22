@@ -67,6 +67,7 @@ struct PushData {
 [[vk::binding(2, 0)]] StructuredBuffer<MaterialBuffer> materials;
 [[vk::binding(3, 0)]] Sampler2D textures[];
 [[vk::binding(4, 0)]] StructuredBuffer<LightBuffer> lights;
+[[vk::binding(5, 0)]] RaytracingAccelerationStructure accelerationStructure;
 
 static const float PI = 3.14159265359;
 static const uint32_t UINT32_MAX = 4294967295;
@@ -121,6 +122,25 @@ float GeometrySmith(float3 N, float3 V, float3 L, float roughness) {
     return ggx1 * ggx2;
 }
 
+static const float EPSILON = 0.01;
+bool inShadow(float3 point, float3 lightDirection) {
+	RayDesc shadowRayDesc;
+	shadowRayDesc.Origin = point;
+	shadowRayDesc.Direction = lightDirection;
+	shadowRayDesc.TMin = EPSILON;
+	shadowRayDesc.TMax = 1e4;
+
+	RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES |
+             RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> shadowQuery;
+    let rayFlags = RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES |
+             RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH;
+	
+	shadowQuery.TraceRayInline(accelerationStructure, rayFlags, 0xFF, shadowRayDesc);
+	shadowQuery.Proceed();
+
+	return shadowQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
+};
+
 [shader("fragment")]
 float4 fragMain(VSOutput input) : SV_TARGET {
 	MaterialBuffer currMaterial = materials[pushData.materialIndex];
@@ -141,6 +161,7 @@ float4 fragMain(VSOutput input) : SV_TARGET {
 	if (currMaterial.baseColorTextureIndex != UINT32_MAX) {
 		baseColor *= textures[currMaterial.baseColorTextureIndex].Sample(input.UV);
 	}
+	if (baseColor.a < 0.5) {discard;}
 	float metallic = currMaterial.metallicRoughnessFactor.r;
 	float roughness = currMaterial.metallicRoughnessFactor.g;
 	if (currMaterial.metallicRoughnessTextureIndex != UINT32_MAX) {
@@ -159,7 +180,6 @@ float4 fragMain(VSOutput input) : SV_TARGET {
 
 	for (int i = 0; i < vpTransform.lightCount; ++i) {
 		LightBuffer currLight = lights[i];
-
 		float3 L;
 		if (currLight.type == LightBuffer::LightType::point) {
 			L = normalize(currLight.position - input.worldPosition);
@@ -168,31 +188,32 @@ float4 fragMain(VSOutput input) : SV_TARGET {
 			L = normalize(currLight.direction);
 		}
 		float3 H = normalize(V + L);
+		if (!inShadow(input.worldPosition, L)) {
+			float3 radiance;
+			if (currLight.type == LightBuffer::LightType::point) {
+				float distance = length(currLight.position - input.worldPosition);
+				float attenuation = 1.0 / (distance * distance);
+				radiance = currLight.intensity * currLight.color * attenuation;
+			}
+			else {
+				radiance = currLight.intensity * currLight.color;
+			}
 
-		float3 radiance;
-		if (currLight.type == LightBuffer::LightType::point) {
-			float distance = length(currLight.position - input.worldPosition);
-			float attenuation = 1.0 / (distance * distance);
-			radiance = currLight.intensity * currLight.color * attenuation;
+			float NDF = DistributionGGX(N, H, roughness);
+			float G = GeometrySmith(N, V, L, roughness);
+			float3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+	
+			float3 numerator = NDF * G * F;	
+			float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
+			float3 specular = numerator / denominator;
+
+			float3 kS = F;
+			float3 kD = float3(1.0) - kS;
+			kD *= 1.0 - metallic;
+
+			float NdotL = max(dot(N, L), 0.0);
+			Lo += (kD * baseColor.rgb / PI + specular) * radiance * NdotL;
 		}
-		else {
-			radiance = currLight.intensity * currLight.color;
-		}
-
-		float NDF = DistributionGGX(N, H, roughness);
-		float G = GeometrySmith(N, V, L, roughness);
-		float3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
- 
-		float3 numerator = NDF * G * F;	
-		float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
-		float3 specular = numerator / denominator;
-
-		float3 kS = F;
-		float3 kD = float3(1.0) - kS;
-		kD *= 1.0 - metallic;
-
-		float NdotL = max(dot(N, L), 0.0);
-		Lo += (kD * baseColor.rgb / PI + specular) * radiance * NdotL;
     }
 	float3 ambient = float3(0.03) * baseColor.rgb * ao;
 	float3 color = ambient + Lo;
@@ -200,5 +221,5 @@ float4 fragMain(VSOutput input) : SV_TARGET {
 	// color = color / (color + float3(1.0));
     // color = pow(color, float3(1.0/2.2));
 
-	return float4(color, baseColor.w);
+	return float4(color, baseColor.a);
 }	

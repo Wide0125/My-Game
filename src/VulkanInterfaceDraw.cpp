@@ -147,6 +147,8 @@ void VulkanInterface::drawFrame() {
 		sizeof(ModelTransformBufferObject) * modelTransforms.size()
 	);
 
+	updateTlas();
+
 	commandBuffer.bindVertexBuffers(0, *m_vertexBuffer, {0});
 	commandBuffer.bindIndexBuffer(m_indexBuffer, 0, vk::IndexType::eUint32);
 
