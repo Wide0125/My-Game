@@ -124,6 +124,8 @@ float GeometrySmith(float3 N, float3 V, float3 L, float roughness) {
 
 static const float EPSILON = 0.01;
 bool inShadow(float3 point, float3 lightDirection) {
+	return false;
+
 	RayDesc shadowRayDesc;
 	shadowRayDesc.Origin = point;
 	shadowRayDesc.Direction = lightDirection;
@@ -161,7 +163,7 @@ float4 fragMain(VSOutput input) : SV_TARGET {
 	if (currMaterial.baseColorTextureIndex != UINT32_MAX) {
 		baseColor *= textures[currMaterial.baseColorTextureIndex].Sample(input.UV);
 	}
-	if (baseColor.a < 0.5) {discard;}
+	if (baseColor.a < 0.1) {discard;}
 	float metallic = currMaterial.metallicRoughnessFactor.r;
 	float roughness = currMaterial.metallicRoughnessFactor.g;
 	if (currMaterial.metallicRoughnessTextureIndex != UINT32_MAX) {

@@ -130,6 +130,8 @@ void VulkanInterface::createTextureImages(const fastgltf::Asset& asset) {
 		}
 		ktxTexture2_Destroy(kTexture);
 
+		
+
 		m_textureImages.emplace_back(m_device, vkTexture.image);
 		m_textureImageMemories.emplace_back(m_device, vkTexture.deviceMemory);
 		m_textureImageViews.push_back(
@@ -862,7 +864,13 @@ void VulkanInterface::createGraphicsPipeline() {
 	};
 
 	vk::PipelineColorBlendAttachmentState colorBlendAttachment {
-		.blendEnable = vk::False,
+		.blendEnable = vk::True,
+		.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha,
+		.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha,
+		.colorBlendOp = vk::BlendOp::eAdd,
+		.srcAlphaBlendFactor = vk::BlendFactor::eOne,
+		.dstAlphaBlendFactor = vk::BlendFactor::eZero,
+		.alphaBlendOp = vk::BlendOp::eAdd,
 		.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
 						  vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA
 	};
