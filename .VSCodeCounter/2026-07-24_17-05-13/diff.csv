@@ -1,0 +1,15 @@
+"filename", "language", "C++", "Slang", "JSON", "YAML", "comment", "blank", "total"
+"c:\Users\brian\Desktop\Code\My Game\build\.cmake\api\v1\reply\index-2026-07-18T08-38-18-0979.json", "JSON", 0, 0, -132, 0, 0, -1, -133
+"c:\Users\brian\Desktop\Code\My Game\build\.cmake\api\v1\reply\index-2026-07-23T07-27-00-0317.json", "JSON", 0, 0, 132, 0, 0, 1, 133
+"c:\Users\brian\Desktop\Code\My Game\build\CMakeFiles\CMakeConfigureLog.yaml", "YAML", 0, 0, 0, 3848, 0, 8, 3856
+"c:\Users\brian\Desktop\Code\My Game\scenes\Scene1.gltf", "JSON", 0, 0, 494, 0, 0, 0, 494
+"c:\Users\brian\Desktop\Code\My Game\src\MeshBuffers.hpp", "C++", -13, 0, 0, 0, 0, -8, -21
+"c:\Users\brian\Desktop\Code\My Game\src\Scene.hpp", "C++", 1, 0, 0, 0, 0, 0, 1
+"c:\Users\brian\Desktop\Code\My Game\src\VulkanInterface.hpp", "C++", 30, 0, 0, 0, 0, 4, 34
+"c:\Users\brian\Desktop\Code\My Game\src\VulkanInterfaceDraw.cpp", "C++", -2, 0, 0, 0, 0, 2, 0
+"c:\Users\brian\Desktop\Code\My Game\src\VulkanInterfaceHelpers.cpp", "C++", 96, 0, 0, 0, 6, 17, 119
+"c:\Users\brian\Desktop\Code\My Game\src\VulkanInterfaceInit.cpp", "C++", 16, 0, 0, 0, 0, 0, 16
+"c:\Users\brian\Desktop\Code\My Game\src\VulkanInterfaceLoadScene.cpp", "C++", 208, 0, 0, 0, 0, 38, 246
+"c:\Users\brian\Desktop\Code\My Game\src\main.cpp", "C++", 3, 0, 0, 0, 0, 0, 3
+"c:\Users\brian\Desktop\Code\My Game\src\shader.slang", "Slang", 0, 19, 0, 0, 1, 3, 23
+"Total", "-", 339, 19, 494, 3848, 7, 64, 4771

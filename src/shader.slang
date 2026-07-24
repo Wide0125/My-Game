@@ -54,6 +54,10 @@ struct MaterialBuffer {
 
 	uint emissiveTextureIndex;
 	float3 emissiveFactor;
+
+	enum AlphaMode { OPAQUE, MASK, BLEND };
+	AlphaMode alphaMode;
+	float alphaCutoff;
 };
 
 struct PushData { 
@@ -124,7 +128,7 @@ float GeometrySmith(float3 N, float3 V, float3 L, float roughness) {
 
 static const float EPSILON = 0.01;
 bool inShadow(float3 point, float3 lightDirection) {
-	return false;
+	// return false;
 
 	RayDesc shadowRayDesc;
 	shadowRayDesc.Origin = point;
@@ -163,7 +167,8 @@ float4 fragMain(VSOutput input) : SV_TARGET {
 	if (currMaterial.baseColorTextureIndex != UINT32_MAX) {
 		baseColor *= textures[currMaterial.baseColorTextureIndex].Sample(input.UV);
 	}
-	if (baseColor.a < 0.1) {discard;}
+	if (currMaterial.alphaMode == MaterialBuffer::AlphaMode::MASK && baseColor.a < currMaterial.alphaCutoff) {discard;}
+
 	float metallic = currMaterial.metallicRoughnessFactor.r;
 	float roughness = currMaterial.metallicRoughnessFactor.g;
 	if (currMaterial.metallicRoughnessTextureIndex != UINT32_MAX) {
@@ -223,5 +228,10 @@ float4 fragMain(VSOutput input) : SV_TARGET {
 	// color = color / (color + float3(1.0));
     // color = pow(color, float3(1.0/2.2));
 
-	return float4(color, baseColor.a);
+	if (currMaterial.alphaMode == MaterialBuffer::AlphaMode::BLEND) {
+		return float4(color, baseColor.a);
+	}
+	else {
+		return float4(color, 1.0);
+	}
 }	

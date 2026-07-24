@@ -24,15 +24,14 @@ int main() {
 	double prevXPos {0.0};
 	double prevYPos {0.0};
 	while (!glfwWindowShouldClose(window)) {
-		Camera& camera {currentScene->sceneCamera};
 		glfwPollEvents();
 		int state = glfwGetKey(window, GLFW_KEY_W);
 		if (state == GLFW_PRESS) {
-			camera.moveCameraPosition(0.1f * camera.getLookAtVector());
+			currentScene->moveCameraPosition(0.1f * currentScene->getLookAtVector());
 		}
 		state = glfwGetKey(window, GLFW_KEY_S);
 		if (state == GLFW_PRESS) {
-			camera.moveCameraPosition(-0.1f * camera.getLookAtVector());
+			currentScene->moveCameraPosition(-0.1f * currentScene->getLookAtVector());
 		}
 		state = glfwGetKey(window, GLFW_KEY_ESCAPE);
 		if (state == GLFW_PRESS) {
@@ -41,10 +40,12 @@ int main() {
 
 		double xPos, yPos;
 		glfwGetCursorPos(window, &xPos, &yPos);
-		camera.moveCameraGaze(
-			{static_cast<float>(xPos - prevXPos) * -0.004,
-			 static_cast<float>(yPos - prevYPos) * -0.004}
-		);
+		if (xPos != prevXPos or yPos != prevYPos) {
+			currentScene->moveCameraGaze(
+				{static_cast<float>(xPos - prevXPos) * -0.004,
+				 static_cast<float>(yPos - prevYPos) * -0.004}
+			);
+		}
 		prevXPos = xPos;
 		prevYPos = yPos;
 

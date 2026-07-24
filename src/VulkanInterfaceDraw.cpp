@@ -106,13 +106,12 @@ void VulkanInterface::drawFrame() {
 	);
 	commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), m_swapChainExtent));
 
-	Camera& sceneCamera {m_currentScene->sceneCamera};
 	VPTransformBufferObject vpTransform {
-		sceneCamera.getCameraPosition(),
+		m_currentScene->getCameraPosition(),
 		lookAt(
-			sceneCamera.getCameraPosition(),
-			sceneCamera.getCameraPosition() + sceneCamera.getLookAtVector(),
-			sceneCamera.getUp()
+			m_currentScene->getCameraPosition(),
+			m_currentScene->getCameraPosition() + m_currentScene->getLookAtVector(),
+			m_currentScene->getUp()
 		),
 		glm::perspective(
 			glm::radians(45.0f),
@@ -159,24 +158,44 @@ void VulkanInterface::drawFrame() {
 	) {
 		const Mesh& currMesh {m_meshes[meshIndex]};
 		for (const auto& subMesh: currMesh.subMeshes) {
-			PushConstants materialIndex {subMesh.materialIndex};
+			if (subMesh.opaque) {
+				PushConstants materialIndex {subMesh.materialIndex};
+				commandBuffer.pushConstants<PushConstants>(
+					m_pipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, materialIndex
+				);
+
+				commandBuffer.drawIndexed(
+					subMesh.indexCount,
+					m_currentScene->getModelInstancesPerMesh()[meshIndex],
+					subMesh.indexStart,
+					subMesh.vertexOffset,
+					offset
+				);
+			}
+			offset += m_currentScene->getModelInstancesPerMesh()[meshIndex];
+		}
+	} // draw opaque objects
+
+	m_currentScene->sortTransparentObjects();
+	for (const auto& transparentModelInstance: m_currentScene->getTransparentModelInstance()) {
+		for (const auto& primitiveIndex: std::get<2>(transparentModelInstance)) {
+			Mesh::SubMesh currSubMesh {
+				m_meshes[std::get<1>(transparentModelInstance)].subMeshes[primitiveIndex]
+			};
+			PushConstants materialIndex {currSubMesh.materialIndex};
 			commandBuffer.pushConstants<PushConstants>(
-				m_pipelineLayout,
-				vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
-				0,
-				materialIndex
+				m_pipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, materialIndex
 			);
 
 			commandBuffer.drawIndexed(
-				subMesh.indexCount,
-				m_currentScene->getModelInstancesPerMesh()[meshIndex],
-				subMesh.indexStart,
-				subMesh.vertexOffset,
-				offset
+				currSubMesh.indexCount,
+				1,
+				currSubMesh.indexStart,
+				currSubMesh.vertexOffset,
+				std::get<0>(transparentModelInstance)
 			);
-			offset += m_currentScene->getModelInstancesPerMesh()[meshIndex];
 		}
-	}
+	} // draw non-opaque objects
 
 	commandBuffer.endRendering();
 	transition_image_layout(

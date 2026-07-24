@@ -93,6 +93,10 @@ struct MaterialBufferObject {
 
 	uint32_t emissiveTextureIndex {};
 	glm::vec3 emissiveFactor {};
+
+	enum AlphaMode { OPAQUE, MASK, BLEND };
+	AlphaMode alphaMode {OPAQUE};
+	float alphaCutoff {0.5};
 };
 
 class VulkanInterface {
@@ -166,6 +170,7 @@ class VulkanInterface {
 			uint32_t maxIndex {};
 			uint32_t vertexOffset {};
 			uint32_t materialIndex {};
+			bool opaque {true};
 		};
 		std::vector<SubMesh> subMeshes {};
 	};

@@ -6,6 +6,7 @@
 #include <format>
 #include <queue>
 #include <stdexcept>
+#include <print>
 
 #include <glm/gtc/quaternion.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
@@ -55,12 +56,40 @@ class Scene {
 			std::ranges::fold_left(m_modelInstancesPerMesh, 0, std::plus {})
 		);
 		auto flattenQueue {getNodes(asset.get())};
-		for (const auto& mesh: flattenQueue) {
-			for (auto modelInstanceIndex: mesh) {
+		for (size_t meshIndex {0}; meshIndex < flattenQueue.size(); ++meshIndex) {
+			for (auto NodeIndex: flattenQueue[meshIndex]) {
 				m_modelInstanceTransforms.push_back({});
-				m_nodes[modelInstanceIndex].modelInstanceIndex =
+				m_nodes[NodeIndex].modelInstanceIndex =
 					m_modelInstanceTransforms.size() - 1;
 			}
+		}
+
+		int modelInstanceRunningCount {0};
+		m_transparentModelInstances.reserve(m_modelInstanceTransforms.size());
+		for (int meshIndex {0}; meshIndex < asset->meshes.size(); ++meshIndex) {
+			std::vector<size_t> transparentSubMeshIndices {};
+			for (
+				int subMeshIndex {0}; subMeshIndex < asset->meshes[meshIndex].primitives.size();
+				++subMeshIndex
+			) {
+				if (asset
+						->materials[asset->meshes[meshIndex]
+										.primitives[subMeshIndex]
+										.materialIndex.value()]
+						.alphaMode == fastgltf::AlphaMode::Blend) {
+					transparentSubMeshIndices.push_back(subMeshIndex);
+				}
+			}
+			for (
+				int modelInstanceIndex {modelInstanceRunningCount};
+				modelInstanceIndex < modelInstanceRunningCount + m_modelInstancesPerMesh[meshIndex];
+				++modelInstanceIndex
+			) {
+				m_transparentModelInstances.push_back(
+					{modelInstanceIndex, meshIndex, transparentSubMeshIndices}
+				);
+			}
+			modelInstanceRunningCount += m_modelInstancesPerMesh[meshIndex];
 		}
 
 		m_parentNodes.reserve(asset->scenes[0].nodeIndices.size());
@@ -78,11 +107,25 @@ class Scene {
 	const std::vector<ModelTransformBufferObject>& getModelInstanceTransforms() const {
 		return m_modelInstanceTransforms;
 	}
-	const std::vector<size_t> getModelInstancesPerMesh() { return m_modelInstancesPerMesh; }
+	const std::vector<size_t>& getModelInstancesPerMesh() { return m_modelInstancesPerMesh; }
+	const std::vector<std::tuple<size_t, size_t, std::vector<size_t>>>&
+	getTransparentModelInstance() {
+		return m_transparentModelInstances;
+	}
 
 	const std::vector<LightBufferObject>& getLights() const { return m_lights; }
 
-	Camera sceneCamera {};
+	const glm::vec3& getCameraPosition() { return m_sceneCamera.getCameraPosition(); }
+	const glm::vec3 getLookAtVector() { return m_sceneCamera.getLookAtVector(); }
+	const glm::vec3 getUp() { return m_sceneCamera.getUp(); }
+	void moveCameraPosition(const glm::vec3& delta) {
+		m_sceneCamera.moveCameraPosition(delta);
+		m_cameraMoved = true;
+	}
+	void moveCameraGaze(const glm::vec2& delta) {
+		m_sceneCamera.moveCameraGaze(delta);
+		m_cameraMoved = true;
+	}
 
 	void propagateUpdates() { // check for any updates and propagate accordingly
 		while (!m_updates.empty()) {
@@ -105,7 +148,9 @@ class Scene {
 				if (currUpdateNode.modelInstanceIndex.has_value()) {
 					m_modelInstanceTransforms[currUpdateNode.modelInstanceIndex.value()]
 						.modelTransform = cumulativeTransform;
-					m_modelInstanceTransforms[currUpdateNode.modelInstanceIndex.value()].normalMatrix = glm::transpose(glm::inverse(glm::mat3(cumulativeTransform)));
+					m_modelInstanceTransforms[currUpdateNode.modelInstanceIndex.value()]
+						.normalMatrix =
+						glm::transpose(glm::inverse(glm::mat3(cumulativeTransform)));
 				}
 				if (currUpdateNode.lightIndex.has_value()) {
 					m_lights[currUpdateNode.lightIndex.value()].position = {
@@ -113,9 +158,8 @@ class Scene {
 						cumulativeTransform[3][1],
 						cumulativeTransform[3][2]
 					};
-					m_lights[currUpdateNode.lightIndex.value()].direction = glm::vec3{
-						cumulativeTransform * glm::vec4{0, 0, 1, 0}
-					};
+					m_lights[currUpdateNode.lightIndex.value()].direction =
+						glm::vec3 {cumulativeTransform * glm::vec4 {0, 0, 1, 0}};
 				}
 				if (currUpdateNode.hasModelInstanceChild) {
 					for (const auto& childNodeIndex: currUpdateNode.childIndices) {
@@ -133,16 +177,47 @@ class Scene {
 		}
 	}
 
+	void sortTransparentObjects() {
+		if (m_cameraMoved) {
+			std::ranges::sort(
+				m_transparentModelInstances,
+				[&](const std::tuple<size_t, size_t, std::vector<size_t>>& first,
+					const std::tuple<size_t, size_t, std::vector<size_t>>& second) {
+					glm::vec3 firstLocation {
+						m_modelInstanceTransforms[std::get<0>(first)].modelTransform[3]
+					};
+					glm::vec3 secondLocation {
+						m_modelInstanceTransforms[std::get<0>(second)].modelTransform[3]
+					};
+					auto distance1 {
+						glm::distance(firstLocation, m_sceneCamera.getCameraPosition())
+					};
+					auto distance2 {
+						glm::distance(secondLocation, m_sceneCamera.getCameraPosition())
+					};
+
+					return distance1 > distance2;
+				}
+			);
+			m_cameraMoved = false;
+		}
+	}
+
   private:
 	std::vector<size_t> m_parentNodes {};
 	std::vector<Node> m_nodes {};
 
 	std::vector<ModelTransformBufferObject> m_modelInstanceTransforms {};
 	std::vector<size_t> m_modelInstancesPerMesh {};
+	std::vector<std::tuple<size_t, size_t, std::vector<size_t>>>
+		m_transparentModelInstances {}; // modelInstance index, mesh index, subMesh index
 
 	std::vector<LightBufferObject> m_lights {};
 
 	std::queue<size_t> m_updates {};
+
+	Camera m_sceneCamera {};
+	bool m_cameraMoved {false};
 
 	std::vector<std::vector<size_t>> getNodes(const fastgltf::Asset& asset) {
 		std::vector<std::vector<size_t>> flattenQueue {};
@@ -179,7 +254,7 @@ class Scene {
 			}
 			m_nodes.push_back(currNode);
 		}
-		return flattenQueue;
+		return std::move(flattenQueue);
 	}
 	void traverseTreeInitial(
 		size_t currIndex, const glm::mat4& globalTransform, std::optional<size_t> parentIndex = {}

@@ -130,8 +130,6 @@ void VulkanInterface::createTextureImages(const fastgltf::Asset& asset) {
 		}
 		ktxTexture2_Destroy(kTexture);
 
-		
-
 		m_textureImages.emplace_back(m_device, vkTexture.image);
 		m_textureImageMemories.emplace_back(m_device, vkTexture.deviceMemory);
 		m_textureImageViews.push_back(
@@ -310,6 +308,16 @@ void VulkanInterface::loadMeshes(const fastgltf::Asset& asset) {
 			verticesRunningCount += vertexCount;
 			indicesRunningCount += indicesAccessor.count;
 
+			switch (asset.materials[primitive.materialIndex.value()].alphaMode) {
+				case fastgltf::AlphaMode::Opaque:
+				case fastgltf::AlphaMode::Mask:
+					subMesh.opaque = true;
+					break;
+				case fastgltf::AlphaMode::Blend:
+					subMesh.opaque = false;
+					break;
+			}
+
 			subMeshes.push_back(std::move(subMesh));
 		}
 		m_meshes.emplace_back(std::move(subMeshes));
@@ -398,7 +406,7 @@ void VulkanInterface::createAccelerationStructures() {
 			vk::AccelerationStructureGeometryKHR blasGeometry {
 				.geometryType = vk::GeometryTypeKHR::eTriangles,
 				.geometry = geometryData,
-				.flags = vk::GeometryFlagBitsKHR::eOpaque
+				.flags = subMesh.opaque ? vk::GeometryFlagBitsKHR::eOpaque : vk::GeometryFlagsKHR(0)
 			};
 			vk::AccelerationStructureBuildGeometryInfoKHR blasBuildGeometryInfo {
 				.type = vk::AccelerationStructureTypeKHR::eBottomLevel,
@@ -448,7 +456,7 @@ void VulkanInterface::createAccelerationStructures() {
 				.buffer = m_blasBuffers[m_blasBuffers.size() - 1],
 				.offset = 0,
 				.size = blasBuildSizes.accelerationStructureSize,
-				.type = vk::AccelerationStructureTypeKHR::eBottomLevel
+				.type = vk::AccelerationStructureTypeKHR::eBottomLevel,
 			};
 			m_blasHandles.emplace_back(m_device.createAccelerationStructureKHR(blasCreateInfo));
 
@@ -480,11 +488,11 @@ void VulkanInterface::createAccelerationStructures() {
 			modelInstanceIndex < m_currentScene->getModelInstancesPerMesh()[meshIndex];
 			++modelInstanceIndex
 		) {
-			vk::AccelerationStructureDeviceAddressInfoKHR addrInfo {
+			vk::AccelerationStructureDeviceAddressInfoKHR addressInfo {
 				.accelerationStructure = *m_blasHandles[meshIndex]
 			};
-			vk::DeviceAddress blasDeviceAddr =
-				m_device.getAccelerationStructureAddressKHR(addrInfo);
+			vk::DeviceAddress blasDeviceAddress =
+				m_device.getAccelerationStructureAddressKHR(addressInfo);
 
 			glm::mat4 currTransform {m_currentScene
 										 ->getModelInstanceTransforms()[modelInstanceRunningCount]
@@ -506,8 +514,9 @@ void VulkanInterface::createAccelerationStructures() {
 
 			vk::AccelerationStructureInstanceKHR instance {
 				.transform = {transformArray},
+				.instanceCustomIndex = static_cast<uint32_t>(modelInstanceRunningCount),
 				.mask = 0xFF,
-				.accelerationStructureReference = blasDeviceAddr
+				.accelerationStructureReference = blasDeviceAddress
 			};
 
 			m_blasInstances.push_back(instance);
@@ -648,6 +657,10 @@ void VulkanInterface::loadMaterials(const fastgltf::Asset& asset) {
 			assert(material.emissiveTexture->texCoordIndex == 0);
 			emissiveTextureIndex = material.emissiveTexture->textureIndex;
 		}
+		MaterialBufferObject::AlphaMode alphaMode {
+			static_cast<MaterialBufferObject::AlphaMode>(material.alphaMode)
+		};
+		float alphaCutoff {material.alphaCutoff};
 
 		materials.emplace_back(
 			baseColorTextureIndex,
@@ -659,7 +672,9 @@ void VulkanInterface::loadMaterials(const fastgltf::Asset& asset) {
 			occlusionTextureIndex,
 			occlusionStrength,
 			emissiveTextureIndex,
-			emissiveFactor
+			emissiveFactor,
+			alphaMode,
+			alphaCutoff
 		);
 	}
 	vk::DeviceSize bufferSize {sizeof(materials[0]) * materials.size()};
