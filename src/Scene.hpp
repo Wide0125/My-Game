@@ -6,7 +6,6 @@
 #include <format>
 #include <queue>
 #include <stdexcept>
-#include <print>
 
 #include <glm/gtc/quaternion.hpp>
 #define GLM_ENABLE_EXPERIMENTAL

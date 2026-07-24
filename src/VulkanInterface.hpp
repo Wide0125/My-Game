@@ -99,6 +99,12 @@ struct MaterialBufferObject {
 	float alphaCutoff {0.5};
 };
 
+struct tlasLutBufferObject {
+	uint32_t materialIndex {};
+	uint32_t indexStart {};
+	uint32_t vertexStart {};
+};
+
 class VulkanInterface {
   public:
 	VulkanInterface();
@@ -161,8 +167,10 @@ class VulkanInterface {
 
 	vk::raii::Buffer m_vertexBuffer {nullptr};
 	VmaAllocation m_vertexAllocation {};
+	uint32_t m_vertexCount {};
 	vk::raii::Buffer m_indexBuffer {nullptr};
 	VmaAllocation m_indexAllocation {};
+	uint32_t m_indexCount {};
 	struct Mesh {
 		struct SubMesh {
 			uint32_t indexStart {};
@@ -170,7 +178,7 @@ class VulkanInterface {
 			uint32_t maxIndex {};
 			uint32_t vertexOffset {};
 			uint32_t materialIndex {};
-			bool opaque {true};
+			MaterialBufferObject::AlphaMode alphaMode {MaterialBufferObject::OPAQUE};
 		};
 		std::vector<SubMesh> subMeshes {};
 	};
@@ -223,6 +231,10 @@ class VulkanInterface {
 	VmaAllocation m_tlasScratchAllocation {nullptr};
 	vk::raii::AccelerationStructureKHR m_tlas {nullptr};
 
+	vk::raii::Buffer m_tlasLutBuffer {nullptr};
+	VmaAllocation m_tlasLutAllocation {};
+	uint32_t m_tlasLutCount {};
+
 	vk::DeviceSize m_accelerationStructureScratchOffset {};
 
 	uint32_t m_frameIndex {0};
@@ -252,6 +264,7 @@ class VulkanInterface {
 		vmaDestroyBuffer(m_allocator, m_blasInstanceBuffer.release(), m_blasInstanceAllocation);
 		vmaDestroyBuffer(m_allocator, m_tlasBuffer.release(), m_tlasAllocation);
 		vmaDestroyBuffer(m_allocator, m_tlasScratchBuffer.release(), m_tlasScratchAllocation);
+		vmaDestroyBuffer(m_allocator, m_tlasLutBuffer.release(), m_tlasLutAllocation);
 		vmaDestroyAllocator(m_allocator);
 		glfwDestroyWindow(m_window);
 		glfwTerminate();

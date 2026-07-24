@@ -210,7 +210,7 @@ void VulkanInterface::copyBuffer(
 }
 
 void VulkanInterface::createDescriptorPool(uint32_t textureCount) {
-	std::array<vk::DescriptorPoolSize, 6> poolSize {
+	std::array<vk::DescriptorPoolSize, 9> poolSize {
 		{{.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
@@ -218,7 +218,10 @@ void VulkanInterface::createDescriptorPool(uint32_t textureCount) {
 		  .descriptorCount = textureCount * MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eAccelerationStructureKHR,
-		  .descriptorCount = MAX_FRAMES_IN_FLIGHT}}
+		  .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT}}
 	};
 	vk::DescriptorPoolCreateInfo poolInfo {
 		.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
@@ -230,25 +233,48 @@ void VulkanInterface::createDescriptorPool(uint32_t textureCount) {
 }
 vk::raii::DescriptorSetLayout
 VulkanInterface::createDescriptorSetLayout(uint32_t textureCount) const {
-	std::array<vk::DescriptorSetLayoutBinding, 6> bindings {
+	std::array<vk::DescriptorSetLayoutBinding, 9> bindings {
 		{{0, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr},
-		 {1,
-		  vk::DescriptorType::eUniformBuffer,
-		  1,
-		  vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
-		  nullptr},
-		 {2, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eFragment, nullptr},
-		 {3,
-		  vk::DescriptorType::eCombinedImageSampler,
-		  textureCount,
-		  vk::ShaderStageFlagBits::eFragment,
-		  nullptr},
-		 {4, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eFragment, nullptr},
-		 {5,
-		  vk::DescriptorType::eAccelerationStructureKHR,
-		  1,
-		  vk::ShaderStageFlagBits::eFragment,
-		  nullptr}}
+		 {.binding = 1,
+		  .descriptorType = vk::DescriptorType::eUniformBuffer,
+		  .descriptorCount = 1,
+		  .stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+		  .pImmutableSamplers = nullptr},
+		 {.binding = 2,
+		  .descriptorType = vk::DescriptorType::eStorageBuffer,
+		  .descriptorCount = 1,
+		  .stageFlags = vk::ShaderStageFlagBits::eFragment,
+		  .pImmutableSamplers = nullptr},
+		 {.binding = 3,
+		  .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+		  .descriptorCount = textureCount,
+		  .stageFlags = vk::ShaderStageFlagBits::eFragment,
+		  .pImmutableSamplers = nullptr},
+		 {.binding = 4,
+		  .descriptorType = vk::DescriptorType::eStorageBuffer,
+		  .descriptorCount = 1,
+		  .stageFlags = vk::ShaderStageFlagBits::eFragment,
+		  .pImmutableSamplers = nullptr},
+		 {.binding = 5,
+		  .descriptorType = vk::DescriptorType::eAccelerationStructureKHR,
+		  .descriptorCount = 1,
+		  .stageFlags = vk::ShaderStageFlagBits::eFragment,
+		  .pImmutableSamplers = nullptr},
+		 {.binding = 6,
+		  .descriptorType = vk::DescriptorType::eStorageBuffer,
+		  .descriptorCount = 1,
+		  .stageFlags = vk::ShaderStageFlagBits::eFragment,
+		  .pImmutableSamplers = nullptr},
+		 {.binding = 7,
+		  .descriptorType = vk::DescriptorType::eStorageBuffer,
+		  .descriptorCount = 1,
+		  .stageFlags = vk::ShaderStageFlagBits::eFragment,
+		  .pImmutableSamplers = nullptr},
+		 {.binding = 8,
+		  .descriptorType = vk::DescriptorType::eStorageBuffer,
+		  .descriptorCount = 1,
+		  .stageFlags = vk::ShaderStageFlagBits::eFragment,
+		  .pImmutableSamplers = nullptr}}
 	};
 	vk::DescriptorSetLayoutCreateInfo layoutInfo {
 		.bindingCount = static_cast<uint32_t>(bindings.size()), .pBindings = bindings.data()

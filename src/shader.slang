@@ -60,6 +60,12 @@ struct MaterialBuffer {
 	float alphaCutoff;
 };
 
+struct tlasLUTBuffer {
+	uint materialIndex;
+	uint indexStart;
+	uint vertexOffset;
+};
+
 struct PushData { 
     uint materialIndex;
 };
@@ -72,6 +78,10 @@ struct PushData {
 [[vk::binding(3, 0)]] Sampler2D textures[];
 [[vk::binding(4, 0)]] StructuredBuffer<LightBuffer> lights;
 [[vk::binding(5, 0)]] RaytracingAccelerationStructure accelerationStructure;
+[[vk::binding(6, 0)]] StructuredBuffer<VSInput> vertices;
+[[vk::binding(7, 0)]] StructuredBuffer<uint32_t> indices;
+[[vk::binding(8, 0)]] StructuredBuffer<tlasLUTBuffer> tlasLut;
+
 
 static const float PI = 3.14159265359;
 static const uint32_t UINT32_MAX = 4294967295;
@@ -127,8 +137,29 @@ float GeometrySmith(float3 N, float3 V, float3 L, float roughness) {
 }
 
 static const float EPSILON = 0.01;
-bool inShadow(float3 point, float3 lightDirection) {
-	// return false;
+
+float2 intersection_uv(uint instanceID, uint primIndex, float2 barycentrics) {
+    uint indexOffset = tlasLut[instanceID].indexStart;
+	uint vertexOffset = tlasLut[instanceID].vertexOffset;
+
+    uint i0 = indices[indexOffset + (primIndex * 3 + 0)];
+    uint i1 = indices[indexOffset + (primIndex * 3 + 1)];
+    uint i2 = indices[indexOffset + (primIndex * 3 + 2)];
+
+    float2 uv0 = vertices[i0 + vertexOffset].UV;
+    float2 uv1 = vertices[i1 + vertexOffset].UV;
+    float2 uv2 = vertices[i2 + vertexOffset].UV;
+
+    float w0 = 1.0 - barycentrics.x - barycentrics.y;
+    float w1 = barycentrics.x;
+    float w2 = barycentrics.y;
+
+    return w0 * uv0 + w1 * uv1 + w2 * uv2;
+}
+float3 inShadow(float3 point, float3 lightDirection, float3 lightRadiance) {
+	// return lightRadiance;
+
+	float3 radiance = lightRadiance;
 
 	RayDesc shadowRayDesc;
 	shadowRayDesc.Origin = point;
@@ -142,9 +173,31 @@ bool inShadow(float3 point, float3 lightDirection) {
              RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH;
 	
 	shadowQuery.TraceRayInline(accelerationStructure, rayFlags, 0xFF, shadowRayDesc);
-	shadowQuery.Proceed();
+	while (shadowQuery.Proceed()) {
+        uint instanceIndex = shadowQuery.CandidateRayInstanceCustomIndex();
+        uint primIndex = shadowQuery.CandidatePrimitiveIndex();
 
-	return shadowQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
+        float2 uv = intersection_uv(instanceIndex, primIndex, shadowQuery.CandidateTriangleBarycentrics());
+
+        uint materialIndex = tlasLut[instanceIndex].materialIndex;
+        float4 intersectionColor = textures[materials[materialIndex].baseColorTextureIndex].SampleLevel(uv, 0) * materials[materialIndex].baseColorFactor;
+
+		float alphaCutoff = materials[materialIndex].alphaCutoff;
+        if (intersectionColor.a >= alphaCutoff) {
+            shadowQuery.CommitNonOpaqueTriangleHit();
+			break;
+        }
+		else if (materials[materialIndex].alphaMode != MaterialBuffer::AlphaMode::MASK) {
+			radiance *= intersectionColor.rgb * (1 - intersectionColor.a);
+		}
+    }
+
+	if (shadowQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
+		return float3(0.0);
+	}
+	else {
+		return radiance;
+	}
 };
 
 [shader("fragment")]
@@ -195,16 +248,17 @@ float4 fragMain(VSOutput input) : SV_TARGET {
 			L = normalize(currLight.direction);
 		}
 		float3 H = normalize(V + L);
-		if (!inShadow(input.worldPosition, L)) {
-			float3 radiance;
-			if (currLight.type == LightBuffer::LightType::point) {
-				float distance = length(currLight.position - input.worldPosition);
-				float attenuation = 1.0 / (distance * distance);
-				radiance = currLight.intensity * currLight.color * attenuation;
-			}
-			else {
-				radiance = currLight.intensity * currLight.color;
-			}
+		float3 radiance;
+		if (currLight.type == LightBuffer::LightType::point) {
+			float distance = length(currLight.position - input.worldPosition);
+			float attenuation = 1.0 / (distance * distance);
+			radiance = currLight.intensity * currLight.color * attenuation;
+		}
+		else {
+			radiance = currLight.intensity * currLight.color;
+		}
+		radiance = inShadow(input.worldPosition, L, radiance);
+		if (!(radiance.x == 0.0 && radiance.y == 0.0 && radiance.z == 0.0)) {
 
 			float NDF = DistributionGGX(N, H, roughness);
 			float G = GeometrySmith(N, V, L, roughness);
@@ -235,3 +289,4 @@ float4 fragMain(VSOutput input) : SV_TARGET {
 		return float4(color, 1.0);
 	}
 }	
+

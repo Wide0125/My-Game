@@ -158,7 +158,7 @@ void VulkanInterface::drawFrame() {
 	) {
 		const Mesh& currMesh {m_meshes[meshIndex]};
 		for (const auto& subMesh: currMesh.subMeshes) {
-			if (subMesh.opaque) {
+			if (subMesh.alphaMode == MaterialBufferObject::MASK or subMesh.alphaMode == MaterialBufferObject::OPAQUE) {
 				PushConstants materialIndex {subMesh.materialIndex};
 				commandBuffer.pushConstants<PushConstants>(
 					m_pipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, materialIndex
