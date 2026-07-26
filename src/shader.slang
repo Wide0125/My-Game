@@ -173,6 +173,7 @@ float3 inShadow(float3 point, float3 lightDirection, float3 lightRadiance) {
              RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH;
 	
 	shadowQuery.TraceRayInline(accelerationStructure, rayFlags, 0xFF, shadowRayDesc);
+
 	while (shadowQuery.Proceed()) {
         uint instanceIndex = shadowQuery.CandidateRayInstanceCustomIndex();
         uint primIndex = shadowQuery.CandidatePrimitiveIndex();
@@ -182,18 +183,23 @@ float3 inShadow(float3 point, float3 lightDirection, float3 lightRadiance) {
         uint materialIndex = tlasLut[instanceIndex].materialIndex;
         float4 intersectionColor = textures[materials[materialIndex].baseColorTextureIndex].SampleLevel(uv, 0) * materials[materialIndex].baseColorFactor;
 
-		float alphaCutoff = materials[materialIndex].alphaCutoff;
-        if (intersectionColor.a >= alphaCutoff) {
-            shadowQuery.CommitNonOpaqueTriangleHit();
-			break;
-        }
-		else if (materials[materialIndex].alphaMode != MaterialBuffer::AlphaMode::MASK) {
-			radiance *= intersectionColor.rgb * (1 - intersectionColor.a);
+		if (materials[materialIndex].alphaMode == MaterialBuffer::AlphaMode::MASK) {
+			if (intersectionColor.a > materials[materialIndex].alphaCutoff) {
+				shadowQuery.CommitNonOpaqueTriangleHit();
+			}
+		}
+		else {
+			if (intersectionColor.a == 1.0) {
+				shadowQuery.CommitNonOpaqueTriangleHit();
+			}
+			else {
+				radiance *= (1 - intersectionColor.a) * intersectionColor.rgb;
+			}
 		}
     }
 
 	if (shadowQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
-		return float3(0.0);
+		return float3(0);
 	}
 	else {
 		return radiance;

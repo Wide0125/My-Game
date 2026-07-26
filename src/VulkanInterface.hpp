@@ -313,6 +313,22 @@ class VulkanInterface {
 		VmaAllocation&,
 		vk::DeviceSize = 0
 	) const;
+	void createGPUBufferWithData(
+		vk::DeviceSize,
+		vk::BufferUsageFlags,
+		const void*,
+		vk::raii::Buffer&,
+		VmaAllocation&,
+		vk::DeviceSize = 0
+	) const;
+	void createHostBufferWithData(
+		vk::DeviceSize,
+		vk::BufferUsageFlags,
+		const void*,
+		vk::raii::Buffer&,
+		VmaAllocation&,
+		vk::DeviceSize = 0
+	) const;
 
 	void createCommandBuffers();
 
@@ -344,7 +360,7 @@ class VulkanInterface {
 
 	void loadMaterials(const fastgltf::Asset&);
 
-	void createBuffers(const fastgltf::Asset&);
+	void createBuffers();
 
 	void createDescriptorPool(uint32_t);
 	vk::raii::DescriptorSetLayout createDescriptorSetLayout(uint32_t) const;
@@ -368,6 +384,7 @@ class VulkanInterface {
 		vk::PipelineStageFlags2,
 		vk::ImageAspectFlags
 	);
+	void updateBuffers();
 	void updateTlas();
 	void recreateSwapChain();
 };

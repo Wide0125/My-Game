@@ -1,5 +1,3 @@
-#include <print>
-
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -26,7 +24,7 @@ void VulkanInterface::loadScene(const fastgltf::Asset& asset, Scene* pScene) {
 	loadMeshes(asset);
 	createAccelerationStructures();
 	loadMaterials(asset);
-	createBuffers(asset);
+	createBuffers();
 	createDescriptorSets(asset);
 	createGraphicsPipeline();
 }
@@ -47,10 +45,10 @@ void VulkanInterface::createTextureImages(const fastgltf::Asset& asset) {
 			fastgltf::visitor {
 				[](auto& a) {},
 				[&](const fastgltf::sources::URI& filePath) {
-					std::println(
-						"Loading image from external "
-						"file..."
-					);
+					// std::println(
+					// 	"Loading image from external "
+					// 	"file..."
+					// );
 					assert(filePath.fileByteOffset == 0);
 					assert(filePath.uri.isLocalPath());
 					assert(
@@ -64,10 +62,10 @@ void VulkanInterface::createTextureImages(const fastgltf::Asset& asset) {
 					);
 				},
 				[&](const fastgltf::sources::Vector& vector) {
-					std::println(
-						"Loading image directly from "
-						"memory..."
-					);
+					// std::println(
+					// 	"Loading image directly from "
+					// 	"memory..."
+					// );
 					assert(vector.mimeType == fastgltf::MimeType::KTX2 and "Texture is not KTX2!");
 					result = ktxTexture2_CreateFromMemory(
 						reinterpret_cast<const ktx_uint8_t*>(vector.bytes.data()),
@@ -77,10 +75,10 @@ void VulkanInterface::createTextureImages(const fastgltf::Asset& asset) {
 					);
 				},
 				[&](const fastgltf::sources::BufferView& bufferViewSource) {
-					std::println(
-						"Loading image from buffer through "
-						"a bufferView..."
-					);
+					// std::println(
+					// 	"Loading image from buffer through "
+					// 	"a bufferView..."
+					// );
 					assert(
 						bufferViewSource.mimeType == fastgltf::MimeType::KTX2 and
 						"Texture is not KTX2!"
@@ -331,56 +329,30 @@ void VulkanInterface::loadMeshes(const fastgltf::Asset& asset) {
 	}
 	m_vertexCount = vertices.size();
 
-	vk::raii::Buffer stagingBuffer {nullptr};
-	VmaAllocation stagingAllocation {};
 	vk::DeviceSize bufferSize {sizeof(vertices[0]) * vertices.size()};
-	createBuffer(
-		bufferSize,
-		vk::BufferUsageFlagBits::eTransferSrc,
-		VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
-		stagingBuffer,
-		stagingAllocation
-	);
-	vmaCopyMemoryToAllocation(m_allocator, vertices.data(), stagingAllocation, 0, bufferSize);
 
-	createBuffer(
+	createGPUBufferWithData(
 		bufferSize,
-		vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer |
-			vk::BufferUsageFlagBits::eShaderDeviceAddress |
+		vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress |
 			vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR |
 			vk::BufferUsageFlagBits::eStorageBuffer,
-		{},
+		vertices.data(),
 		m_vertexBuffer,
 		m_vertexAllocation
 	);
-	copyBuffer(stagingBuffer, m_vertexBuffer, bufferSize);
-	vmaDestroyBuffer(m_allocator, stagingBuffer.release(), stagingAllocation);
 
 	m_indexCount = indices.size();
 
 	bufferSize = sizeof(indices[0]) * indices.size();
-	createBuffer(
+	createGPUBufferWithData(
 		bufferSize,
-		vk::BufferUsageFlagBits::eTransferSrc,
-		VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
-		stagingBuffer,
-		stagingAllocation
-	);
-	vmaCopyMemoryToAllocation(m_allocator, indices.data(), stagingAllocation, 0, bufferSize);
-
-	createBuffer(
-		bufferSize,
-		vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer |
-			vk::BufferUsageFlagBits::eShaderDeviceAddress |
+		vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress |
 			vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR |
 			vk::BufferUsageFlagBits::eStorageBuffer,
-		{},
+		indices.data(),
 		m_indexBuffer,
 		m_indexAllocation
 	);
-	copyBuffer(stagingBuffer, m_indexBuffer, bufferSize);
-
-	vmaDestroyBuffer(m_allocator, stagingBuffer.release(), stagingAllocation);
 }
 
 void VulkanInterface::createAccelerationStructures() {
@@ -405,7 +377,7 @@ void VulkanInterface::createAccelerationStructures() {
 				.vertexFormat = vk::Format::eR32G32B32Sfloat,
 				.vertexData = vertexAddress,
 				.vertexStride = sizeof(Vertex),
-				.maxVertex = subMesh.maxIndex,
+				.maxVertex = subMesh.maxIndex + subMesh.indexStart,
 				.indexType = vk::IndexType::eUint32,
 				.indexData = indexAddress,
 			};
@@ -487,94 +459,79 @@ void VulkanInterface::createAccelerationStructures() {
 			vmaDestroyBuffer(m_allocator, scratchBuffer.release(), scratchAllocation);
 		}
 	}
+	m_blasInstances.clear();
 	std::vector<tlasLutBufferObject> tlasLut {};
 	tlasLut.reserve(m_subMeshCount * m_currentScene->getModelInstanceTransforms().size());
-	int modelInstanceRunningCount {0};
+	m_blasInstances.reserve(m_subMeshCount * m_currentScene->getModelInstanceTransforms().size());
+	int meshModelInstanceNum {0};
+	int meshIndex {0};
 	int subMeshRunningCount {0};
-	for (
-		int meshIndex {0}; meshIndex < m_currentScene->getModelInstancesPerMesh().size();
-		++meshIndex
-	) {
+	for (const auto& modelInstanceTransform: m_currentScene->getModelInstanceTransforms()) {
 		for (
-			int modelInstanceIndex {0};
-			modelInstanceIndex < m_currentScene->getModelInstancesPerMesh()[meshIndex];
-			++modelInstanceIndex
+			int subMeshIndex {0}; subMeshIndex < m_meshes[meshIndex].subMeshes.size();
+			++subMeshIndex
 		) {
-			for (const auto& subMesh: m_meshes[meshIndex].subMeshes) {
-				vk::AccelerationStructureDeviceAddressInfoKHR addressInfo {
-					.accelerationStructure = *m_blasHandles[subMeshRunningCount] // todo: fix
-				};
-				vk::DeviceAddress blasDeviceAddress =
-					m_device.getAccelerationStructureAddressKHR(addressInfo);
+			vk::AccelerationStructureDeviceAddressInfoKHR addressInfo {
+				.accelerationStructure = *m_blasHandles[subMeshRunningCount + subMeshIndex]
+			};
+			vk::DeviceAddress blasDeviceAddress =
+				m_device.getAccelerationStructureAddressKHR(addressInfo);
 
-				glm::mat4 currTransform {
-					m_currentScene->getModelInstanceTransforms()[modelInstanceRunningCount]
-						.modelTransform
-				};
-				std::array<std::array<float, 4>, 3> transformArray {
-					{{currTransform[0][0],
-					  currTransform[1][0],
-					  currTransform[2][0],
-					  currTransform[3][0]},
-					 {currTransform[0][1],
-					  currTransform[1][1],
-					  currTransform[2][1],
-					  currTransform[3][1]},
-					 {currTransform[0][2],
-					  currTransform[1][2],
-					  currTransform[2][2],
-					  currTransform[3][2]}}
-				};
+			glm::mat4 currTransform {modelInstanceTransform.modelTransform};
+			std::array<std::array<float, 4>, 3> transformArray {
+				{{currTransform[0][0],
+				  currTransform[1][0],
+				  currTransform[2][0],
+				  currTransform[3][0]},
+				 {currTransform[0][1],
+				  currTransform[1][1],
+				  currTransform[2][1],
+				  currTransform[3][1]},
+				 {currTransform[0][2],
+				  currTransform[1][2],
+				  currTransform[2][2],
+				  currTransform[3][2]}}
+			};
 
-				vk::AccelerationStructureInstanceKHR instance {
-					.transform = {transformArray},
-					.instanceCustomIndex = static_cast<uint32_t>(tlasLut.size()),
-					.mask = 0xFF,
-					.accelerationStructureReference = blasDeviceAddress,
-				};
+			vk::AccelerationStructureInstanceKHR instance {
+				.transform = {transformArray},
+				.instanceCustomIndex = static_cast<uint32_t>(tlasLut.size()),
+				.mask = 0xFF,
+				.accelerationStructureReference = blasDeviceAddress,
+			};
 
-				tlasLut.emplace_back(subMesh.materialIndex, subMesh.indexStart, subMesh.vertexOffset);
+			Mesh::SubMesh subMesh {m_meshes[meshIndex].subMeshes[subMeshIndex]};
+			tlasLut.emplace_back(subMesh.materialIndex, subMesh.indexStart, subMesh.vertexOffset);
 
-				m_blasInstances.push_back(instance);
-			}
-			++modelInstanceRunningCount;
+			m_blasInstances.push_back(instance);
 		}
-		subMeshRunningCount += m_meshes[meshIndex].subMeshes.size();
+		++meshModelInstanceNum;
+		if (meshModelInstanceNum == m_currentScene->getModelInstancesPerMesh()[meshIndex]) {
+			subMeshRunningCount += m_meshes[meshIndex].subMeshes.size();
+			++meshIndex;
+			meshModelInstanceNum = 0;
+		}
 	}
 	tlasLut.shrink_to_fit();
+	m_blasInstances.shrink_to_fit();
 	m_tlasLutCount = tlasLut.size();
 	vk::DeviceSize tlasLutBufferSize {sizeof(tlasLutBufferObject) * tlasLut.size()};
-	vk::raii::Buffer stagingBuffer {nullptr};
-	VmaAllocation stagingAllocation {};
-	createBuffer(
+	createGPUBufferWithData(
 		tlasLutBufferSize,
-		vk::BufferUsageFlagBits::eTransferSrc,
-		VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
-		stagingBuffer,
-		stagingAllocation
-	);
-	vmaCopyMemoryToAllocation(m_allocator, tlasLut.data(), stagingAllocation, 0, tlasLutBufferSize);
-	createBuffer(
-		tlasLutBufferSize,
-		vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst,
-		{},
+		vk::BufferUsageFlagBits::eStorageBuffer,
+		tlasLut.data(),
 		m_tlasLutBuffer,
 		m_tlasLutAllocation
 	);
-	copyBuffer(stagingBuffer, m_tlasLutBuffer, tlasLutBufferSize);
-	vmaDestroyBuffer(m_allocator, stagingBuffer.release(), stagingAllocation);
 
 	vk::DeviceSize instanceBufferSize {sizeof(m_blasInstances[0]) * m_blasInstances.size()};
-	createBuffer(
+	createHostBufferWithData(
 		instanceBufferSize,
 		vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eTransferDst |
 			vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR,
-		VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+		m_blasInstances.data(),
 		m_blasInstanceBuffer,
 		m_blasInstanceAllocation
-	);
-	vmaCopyMemoryToAllocation(
-		m_allocator, m_blasInstances.data(), m_blasInstanceAllocation, 0, instanceBufferSize
 	);
 
 	vk::BufferDeviceAddressInfo instanceAddressInfo {.buffer = m_blasInstanceBuffer};
@@ -719,28 +676,16 @@ void VulkanInterface::loadMaterials(const fastgltf::Asset& asset) {
 		);
 	}
 	vk::DeviceSize bufferSize {sizeof(materials[0]) * materials.size()};
-	vk::raii::Buffer stagingBuffer {nullptr};
-	VmaAllocation stagingAllocation {};
-	createBuffer(
+	createGPUBufferWithData(
 		bufferSize,
-		vk::BufferUsageFlagBits::eTransferSrc,
-		VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
-		stagingBuffer,
-		stagingAllocation
-	);
-	vmaCopyMemoryToAllocation(m_allocator, materials.data(), stagingAllocation, 0, bufferSize);
-	createBuffer(
-		bufferSize,
-		vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer,
-		{},
+		vk::BufferUsageFlagBits::eStorageBuffer,
+		materials.data(),
 		m_materialBuffer,
 		m_materialAllocation
 	);
-	copyBuffer(stagingBuffer, m_materialBuffer, bufferSize);
-	vmaDestroyBuffer(m_allocator, stagingBuffer.release(), stagingAllocation);
 }
 
-void VulkanInterface::createBuffers(const fastgltf::Asset& asset) {
+void VulkanInterface::createBuffers() {
 	size_t modelInstanceCount {m_currentScene->getModelInstanceTransforms().size()};
 	size_t lightsCount {m_currentScene->getLights().size()};
 	for (size_t frameInFlight {0}; frameInFlight < MAX_FRAMES_IN_FLIGHT; ++frameInFlight) {

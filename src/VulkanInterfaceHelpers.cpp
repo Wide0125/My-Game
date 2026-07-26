@@ -48,7 +48,7 @@ bool VulkanInterface::isDeviceSuitable(const vk::raii::PhysicalDevice& physicalD
 	};
 
 	return supportsVulkan1_3 and queueFamilySupportsGraphics and supportsAllExtensions and
-		   supportsRequiredFeatures;
+		   supportsRequiredFeatures and physicalDevice.getProperties().deviceType == vk::PhysicalDeviceType::eDiscreteGpu;
 }
 
 vk::Extent2D
@@ -161,6 +161,55 @@ void VulkanInterface::createBuffer(
 		throw std::runtime_error("Failed to create buffer!");
 	}
 	buffer = {m_device, bufferTemp};
+}
+
+void VulkanInterface::createGPUBufferWithData(
+	vk::DeviceSize bufferSize,
+	vk::BufferUsageFlags usageFlags,
+	const void* data,
+	vk::raii::Buffer& buffer,
+	VmaAllocation& allocation,
+	vk::DeviceSize minAlignment
+) const {
+	vk::raii::Buffer stagingBuffer {nullptr};
+	VmaAllocation stagingAllocation {};
+	createBuffer(
+		bufferSize,
+		vk::BufferUsageFlagBits::eTransferSrc,
+		VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+		stagingBuffer,
+		stagingAllocation
+	);
+	vmaCopyMemoryToAllocation(m_allocator, data, stagingAllocation, 0, bufferSize);
+	createBuffer(
+		bufferSize,
+		usageFlags | vk::BufferUsageFlagBits::eTransferDst,
+		{},
+		buffer,
+		allocation,
+		minAlignment
+	);
+	copyBuffer(stagingBuffer, buffer, bufferSize);
+	vmaDestroyBuffer(m_allocator, stagingBuffer.release(), stagingAllocation);
+}
+
+void VulkanInterface::createHostBufferWithData(
+	vk::DeviceSize bufferSize,
+	vk::BufferUsageFlags usageFlags,
+	const void* data,
+	vk::raii::Buffer& buffer,
+	VmaAllocation& allocation,
+	vk::DeviceSize minAlignment
+) const {
+	createBuffer(
+		bufferSize,
+		usageFlags,
+		VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
+		buffer,
+		allocation,
+		minAlignment
+	);
+	vmaCopyMemoryToAllocation(m_allocator, data, allocation, 0, bufferSize);
 }
 
 std::unique_ptr<vk::raii::CommandBuffer> VulkanInterface::beginSingleTimeCommands() const {
@@ -378,107 +427,161 @@ void VulkanInterface::transition_image_layout(
 	};
 	m_commandBuffers[m_frameIndex].pipelineBarrier2(dependency_info);
 }
-void VulkanInterface::updateTlas() {
-	for (
-		int modelInstanceIndex {0};
-		modelInstanceIndex < m_currentScene->getModelInstanceTransforms().size();
-		++modelInstanceIndex
-	) {
-		glm::mat4 currTransform {
-			m_currentScene->getModelInstanceTransforms()[modelInstanceIndex].modelTransform
-		};
-		vk::TransformMatrixKHR transformMatrix {};
-		transformMatrix.matrix = std::array<std::array<float, 4>, 3> {
-			{{currTransform[0][0], currTransform[1][0], currTransform[2][0], currTransform[3][0]},
-			 {currTransform[0][1], currTransform[1][1], currTransform[2][1], currTransform[3][1]},
-			 {currTransform[0][2], currTransform[1][2], currTransform[2][2], currTransform[3][2]}}
-		};
-		m_blasInstances[modelInstanceIndex].setTransform(transformMatrix);
-	}
-
-	vk::DeviceSize instanceBufferSize = sizeof(m_blasInstances[0]) * m_blasInstances.size();
+void VulkanInterface::updateBuffers() {
+	VPTransformBufferObject vpTransform {
+		m_currentScene->getCameraPosition(),
+		lookAt(
+			m_currentScene->getCameraPosition(),
+			m_currentScene->getCameraPosition() + m_currentScene->getLookAtVector(),
+			m_currentScene->getUp()
+		),
+		glm::perspective(
+			glm::radians(45.0f),
+			static_cast<float>(m_swapChainExtent.width) /
+				static_cast<float>(m_swapChainExtent.height),
+			0.1f,
+			100.0f
+		),
+		static_cast<int>(m_currentScene->getLights().size())
+	};
+	vpTransform.projectionTransform[1][1] *= -1;
+	vmaCopyMemoryToAllocation(
+		m_allocator, &vpTransform, m_vpTransformAllocations[m_frameIndex], 0, sizeof(vpTransform)
+	);
 
 	vmaCopyMemoryToAllocation(
-		m_allocator, m_blasInstances.data(), m_blasInstanceAllocation, 0, instanceBufferSize
+		m_allocator,
+		m_currentScene->getLights().data(),
+		m_lightAllocations[m_frameIndex],
+		0,
+		m_currentScene->getLights().size() * sizeof(LightBufferObject)
 	);
 
-	vk::BufferDeviceAddressInfo instanceAddressInfo {.buffer = m_blasInstanceBuffer};
-	vk::DeviceAddress instanceAddress = m_device.getBufferAddressKHR(instanceAddressInfo);
-
-	// Prepare the geometry (instance) data
-	auto instancesData = vk::AccelerationStructureGeometryInstancesDataKHR {
-		.arrayOfPointers = vk::False, .data = instanceAddress
+	const std::vector<ModelTransformBufferObject>& modelTransforms {
+		m_currentScene->getModelInstanceTransforms()
 	};
-
-	vk::AccelerationStructureGeometryDataKHR geometryData(instancesData);
-
-	vk::AccelerationStructureGeometryKHR tlasGeometry {
-		.geometryType = vk::GeometryTypeKHR::eInstances, .geometry = geometryData
-	};
-
-	// TASK06: Note the new parameters to re-build the TLAS in-place
-	vk::AccelerationStructureBuildGeometryInfoKHR tlasBuildGeometryInfo {
-		.type = vk::AccelerationStructureTypeKHR::eTopLevel,
-		.flags = vk::BuildAccelerationStructureFlagBitsKHR::eAllowUpdate,
-		.mode = vk::BuildAccelerationStructureModeKHR::eUpdate,
-		.srcAccelerationStructure = m_tlas,
-		.dstAccelerationStructure = m_tlas,
-		.geometryCount = 1,
-		.pGeometries = &tlasGeometry
-	};
-
-	vk::BufferDeviceAddressInfo scratchAddressInfo {.buffer = *m_tlasScratchBuffer};
-	vk::DeviceAddress scratchAddr = m_device.getBufferAddressKHR(scratchAddressInfo);
-	tlasBuildGeometryInfo.scratchData.deviceAddress = scratchAddr;
-
-	// Prepare the build range for the TLAS
-	vk::AccelerationStructureBuildRangeInfoKHR tlasRangeInfo {
-		.primitiveCount = static_cast<uint32_t>(m_blasInstances.size()),
-		.primitiveOffset = 0,
-		.firstVertex = 0,
-		.transformOffset = 0
-	};
-
-	// Re-build the TLAS
-	auto cmd = beginSingleTimeCommands();
-
-	// Pre-build barrier
-	vk::MemoryBarrier preBarrier {
-		.srcAccessMask = vk::AccessFlagBits::eAccelerationStructureWriteKHR |
-						 vk::AccessFlagBits::eTransferWrite | vk::AccessFlagBits::eShaderRead,
-		.dstAccessMask = vk::AccessFlagBits::eAccelerationStructureReadKHR |
-						 vk::AccessFlagBits::eAccelerationStructureWriteKHR
-	};
-
-	cmd->pipelineBarrier(
-		vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR |
-			vk::PipelineStageFlagBits::eTransfer |
-			vk::PipelineStageFlagBits::eFragmentShader,			   // srcStageMask
-		vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR, // dstStageMask
-		{},														   // dependencyFlags
-		preBarrier,												   // memoryBarriers
-		{},														   // bufferMemoryBarriers
-		{}														   // imageMemoryBarriers
+	vmaCopyMemoryToAllocation(
+		m_allocator,
+		modelTransforms.data(),
+		m_modelTransformAllocations[m_frameIndex],
+		0,
+		sizeof(ModelTransformBufferObject) * modelTransforms.size()
 	);
+	m_currentScene->sortTransparentObjects();
+}
+void VulkanInterface::updateTlas() {
+	if (m_currentScene->modelsUpdated()) {
+		for (
+			int modelInstanceIndex {0};
+			modelInstanceIndex < m_currentScene->getModelInstanceTransforms().size();
+			++modelInstanceIndex
+		) {
+			glm::mat4 currTransform {
+				m_currentScene->getModelInstanceTransforms()[modelInstanceIndex].modelTransform
+			};
+			vk::TransformMatrixKHR transformMatrix {};
+			transformMatrix.matrix = std::array<std::array<float, 4>, 3> {
+				{{currTransform[0][0],
+				  currTransform[1][0],
+				  currTransform[2][0],
+				  currTransform[3][0]},
+				 {currTransform[0][1],
+				  currTransform[1][1],
+				  currTransform[2][1],
+				  currTransform[3][1]},
+				 {currTransform[0][2],
+				  currTransform[1][2],
+				  currTransform[2][2],
+				  currTransform[3][2]}}
+			};
+			m_blasInstances[modelInstanceIndex].setTransform(transformMatrix);
+		}
 
-	cmd->buildAccelerationStructuresKHR({tlasBuildGeometryInfo}, {&tlasRangeInfo});
+		vk::DeviceSize instanceBufferSize = sizeof(m_blasInstances[0]) * m_blasInstances.size();
 
-	// Post-build barrier
-	vk::MemoryBarrier postBarrier {
-		.srcAccessMask = vk::AccessFlagBits::eAccelerationStructureWriteKHR,
-		.dstAccessMask =
-			vk::AccessFlagBits::eAccelerationStructureReadKHR | vk::AccessFlagBits::eShaderRead
-	};
+		vmaCopyMemoryToAllocation(
+			m_allocator, m_blasInstances.data(), m_blasInstanceAllocation, 0, instanceBufferSize
+		);
 
-	cmd->pipelineBarrier(
-		vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR, // srcStageMask
-		vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR |
-			vk::PipelineStageFlagBits::eFragmentShader, // dstStageMask
-		{},												// dependencyFlags
-		postBarrier,									// memoryBarriers
-		{},												// bufferMemoryBarriers
-		{}												// imageMemoryBarriers
-	);
+		vk::BufferDeviceAddressInfo instanceAddressInfo {.buffer = m_blasInstanceBuffer};
+		vk::DeviceAddress instanceAddress = m_device.getBufferAddressKHR(instanceAddressInfo);
 
-	endSingleTimeCommands(*cmd);
+		// Prepare the geometry (instance) data
+		auto instancesData = vk::AccelerationStructureGeometryInstancesDataKHR {
+			.arrayOfPointers = vk::False, .data = instanceAddress
+		};
+
+		vk::AccelerationStructureGeometryDataKHR geometryData(instancesData);
+
+		vk::AccelerationStructureGeometryKHR tlasGeometry {
+			.geometryType = vk::GeometryTypeKHR::eInstances, .geometry = geometryData
+		};
+
+		// TASK06: Note the new parameters to re-build the TLAS in-place
+		vk::AccelerationStructureBuildGeometryInfoKHR tlasBuildGeometryInfo {
+			.type = vk::AccelerationStructureTypeKHR::eTopLevel,
+			.flags = vk::BuildAccelerationStructureFlagBitsKHR::eAllowUpdate,
+			.mode = vk::BuildAccelerationStructureModeKHR::eUpdate,
+			.srcAccelerationStructure = m_tlas,
+			.dstAccelerationStructure = m_tlas,
+			.geometryCount = 1,
+			.pGeometries = &tlasGeometry
+		};
+
+		vk::BufferDeviceAddressInfo scratchAddressInfo {.buffer = *m_tlasScratchBuffer};
+		vk::DeviceAddress scratchAddr = m_device.getBufferAddressKHR(scratchAddressInfo);
+		tlasBuildGeometryInfo.scratchData.deviceAddress = scratchAddr;
+
+		// Prepare the build range for the TLAS
+		vk::AccelerationStructureBuildRangeInfoKHR tlasRangeInfo {
+			.primitiveCount = static_cast<uint32_t>(m_blasInstances.size()),
+			.primitiveOffset = 0,
+			.firstVertex = 0,
+			.transformOffset = 0
+		};
+
+		// Re-build the TLAS
+		auto cmd = beginSingleTimeCommands();
+
+		// Pre-build barrier
+		vk::MemoryBarrier preBarrier {
+			.srcAccessMask = vk::AccessFlagBits::eAccelerationStructureWriteKHR |
+							 vk::AccessFlagBits::eTransferWrite | vk::AccessFlagBits::eShaderRead,
+			.dstAccessMask = vk::AccessFlagBits::eAccelerationStructureReadKHR |
+							 vk::AccessFlagBits::eAccelerationStructureWriteKHR
+		};
+
+		cmd->pipelineBarrier(
+			vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR |
+				vk::PipelineStageFlagBits::eTransfer | vk::PipelineStageFlagBits::eFragmentShader,
+			vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR,
+			{},
+			preBarrier,
+			{},
+			{}
+		);
+
+		cmd->buildAccelerationStructuresKHR({tlasBuildGeometryInfo}, {&tlasRangeInfo});
+
+		// Post-build barrier
+		vk::MemoryBarrier postBarrier {
+			.srcAccessMask = vk::AccessFlagBits::eAccelerationStructureWriteKHR,
+			.dstAccessMask =
+				vk::AccessFlagBits::eAccelerationStructureReadKHR | vk::AccessFlagBits::eShaderRead
+		};
+
+		cmd->pipelineBarrier(
+			vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR,
+			vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR |
+				vk::PipelineStageFlagBits::eFragmentShader,
+			{},
+			postBarrier,
+			{},
+			{}
+		);
+
+		endSingleTimeCommands(*cmd);
+
+		m_currentScene->finishHandlingModelUpdates();
+	}
 }

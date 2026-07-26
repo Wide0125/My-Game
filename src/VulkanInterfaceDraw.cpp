@@ -24,6 +24,9 @@ void VulkanInterface::drawFrame() {
 		throw std::runtime_error("failed to acquire swap chain image!");
 	}
 
+	updateBuffers();
+	updateTlas();
+
 	m_device.resetFences(*m_inFlightFences[m_frameIndex]); // check fences
 
 	m_currentScene->propagateUpdates();
@@ -105,49 +108,6 @@ void VulkanInterface::drawFrame() {
 		)
 	);
 	commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), m_swapChainExtent));
-
-	VPTransformBufferObject vpTransform {
-		m_currentScene->getCameraPosition(),
-		lookAt(
-			m_currentScene->getCameraPosition(),
-			m_currentScene->getCameraPosition() + m_currentScene->getLookAtVector(),
-			m_currentScene->getUp()
-		),
-		glm::perspective(
-			glm::radians(45.0f),
-			static_cast<float>(m_swapChainExtent.width) /
-				static_cast<float>(m_swapChainExtent.height),
-			0.1f,
-			100.0f
-		),
-		static_cast<int>(m_currentScene->getLights().size())
-	};
-	vpTransform.projectionTransform[1][1] *= -1;
-	vmaCopyMemoryToAllocation(
-		m_allocator, &vpTransform, m_vpTransformAllocations[m_frameIndex], 0, sizeof(vpTransform)
-	);
-
-	vmaCopyMemoryToAllocation(
-		m_allocator,
-		m_currentScene->getLights().data(),
-		m_lightAllocations[m_frameIndex],
-		0,
-		m_currentScene->getLights().size() * sizeof(LightBufferObject)
-	);
-
-	const std::vector<ModelTransformBufferObject>& modelTransforms {
-		m_currentScene->getModelInstanceTransforms()
-	};
-	vmaCopyMemoryToAllocation(
-		m_allocator,
-		modelTransforms.data(),
-		m_modelTransformAllocations[m_frameIndex],
-		0,
-		sizeof(ModelTransformBufferObject) * modelTransforms.size()
-	);
-
-	updateTlas();
-
 	commandBuffer.bindVertexBuffers(0, *m_vertexBuffer, {0});
 	commandBuffer.bindIndexBuffer(m_indexBuffer, 0, vk::IndexType::eUint32);
 
@@ -158,7 +118,8 @@ void VulkanInterface::drawFrame() {
 	) {
 		const Mesh& currMesh {m_meshes[meshIndex]};
 		for (const auto& subMesh: currMesh.subMeshes) {
-			if (subMesh.alphaMode == MaterialBufferObject::MASK or subMesh.alphaMode == MaterialBufferObject::OPAQUE) {
+			if (subMesh.alphaMode == MaterialBufferObject::MASK or
+				subMesh.alphaMode == MaterialBufferObject::OPAQUE) {
 				PushConstants materialIndex {subMesh.materialIndex};
 				commandBuffer.pushConstants<PushConstants>(
 					m_pipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, materialIndex
@@ -176,7 +137,6 @@ void VulkanInterface::drawFrame() {
 		}
 	} // draw opaque objects
 
-	m_currentScene->sortTransparentObjects();
 	for (const auto& transparentModelInstance: m_currentScene->getTransparentModelInstance()) {
 		for (const auto& primitiveIndex: std::get<2>(transparentModelInstance)) {
 			Mesh::SubMesh currSubMesh {

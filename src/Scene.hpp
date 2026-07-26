@@ -58,8 +58,7 @@ class Scene {
 		for (size_t meshIndex {0}; meshIndex < flattenQueue.size(); ++meshIndex) {
 			for (auto NodeIndex: flattenQueue[meshIndex]) {
 				m_modelInstanceTransforms.push_back({});
-				m_nodes[NodeIndex].modelInstanceIndex =
-					m_modelInstanceTransforms.size() - 1;
+				m_nodes[NodeIndex].modelInstanceIndex = m_modelInstanceTransforms.size() - 1;
 			}
 		}
 
@@ -126,6 +125,9 @@ class Scene {
 		m_cameraMoved = true;
 	}
 
+	const bool modelsUpdated() { return m_modelsUpdated; }
+	void finishHandlingModelUpdates() { m_modelsUpdated = false; }
+
 	void propagateUpdates() { // check for any updates and propagate accordingly
 		while (!m_updates.empty()) {
 			size_t currUpdateIndex {m_updates.front()};
@@ -173,6 +175,7 @@ class Scene {
 					}
 				}
 			}
+			m_modelsUpdated = true;
 		}
 	}
 
@@ -214,6 +217,7 @@ class Scene {
 	std::vector<LightBufferObject> m_lights {};
 
 	std::queue<size_t> m_updates {};
+	bool m_modelsUpdated {false};
 
 	Camera m_sceneCamera {};
 	bool m_cameraMoved {false};
