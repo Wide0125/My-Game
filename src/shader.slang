@@ -193,7 +193,9 @@ float3 inShadow(float3 point, float3 lightDirection, float3 lightRadiance) {
 				shadowQuery.CommitNonOpaqueTriangleHit();
 			}
 			else {
-				radiance *= (1 - intersectionColor.a) * intersectionColor.rgb;
+				float absorptionStrength = intersectionColor.a * 2.0;
+				float3 absorptionCoefficient = (1.0 - intersectionColor.rgb) * absorptionStrength;
+				radiance *= exp(-absorptionCoefficient);
 			}
 		}
     }
