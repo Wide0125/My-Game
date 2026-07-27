@@ -111,51 +111,7 @@ void VulkanInterface::drawFrame() {
 	commandBuffer.bindVertexBuffers(0, *m_vertexBuffer, {0});
 	commandBuffer.bindIndexBuffer(m_indexBuffer, 0, vk::IndexType::eUint32);
 
-	uint32_t offset {0};
-	for (
-		uint32_t meshIndex {0}; meshIndex < m_currentScene->getModelInstancesPerMesh().size();
-		++meshIndex
-	) {
-		const Mesh& currMesh {m_meshes[meshIndex]};
-		for (const auto& subMesh: currMesh.subMeshes) {
-			if (subMesh.alphaMode == MaterialBufferObject::MASK or
-				subMesh.alphaMode == MaterialBufferObject::OPAQUE) {
-				PushConstants materialIndex {subMesh.materialIndex};
-				commandBuffer.pushConstants<PushConstants>(
-					m_pipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, materialIndex
-				);
-
-				commandBuffer.drawIndexed(
-					subMesh.indexCount,
-					m_currentScene->getModelInstancesPerMesh()[meshIndex],
-					subMesh.indexStart,
-					subMesh.vertexOffset,
-					offset
-				);
-			}
-			offset += m_currentScene->getModelInstancesPerMesh()[meshIndex];
-		}
-	} // draw opaque objects
-
-	for (const auto& transparentModelInstance: m_currentScene->getTransparentModelInstance()) {
-		for (const auto& primitiveIndex: std::get<2>(transparentModelInstance)) {
-			Mesh::SubMesh currSubMesh {
-				m_meshes[std::get<1>(transparentModelInstance)].subMeshes[primitiveIndex]
-			};
-			PushConstants materialIndex {currSubMesh.materialIndex};
-			commandBuffer.pushConstants<PushConstants>(
-				m_pipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, materialIndex
-			);
-
-			commandBuffer.drawIndexed(
-				currSubMesh.indexCount,
-				1,
-				currSubMesh.indexStart,
-				currSubMesh.vertexOffset,
-				std::get<0>(transparentModelInstance)
-			);
-		}
-	} // draw non-opaque objects
+	commandBuffer.drawIndexedIndirect(m_drawCommandsBuffer, 0, m_opaqueDrawCallsCount + m_transparentDrawCallsCount, sizeof(DrawIndirectCommand));
 
 	commandBuffer.endRendering();
 	transition_image_layout(

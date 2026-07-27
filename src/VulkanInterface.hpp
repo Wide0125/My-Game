@@ -30,7 +30,7 @@ struct VPTransformBufferObject {
 	int lightCount {};
 };
 
-struct PushConstants {
+struct SubMeshMetadataBufferObject {
 	uint32_t materialIndex {};
 };
 
@@ -105,6 +105,14 @@ struct tlasLutBufferObject {
 	uint32_t vertexStart {};
 };
 
+struct DrawIndirectCommand {
+	uint32_t indexCount {};
+	uint32_t instanceCount {};
+	uint32_t firstIndex {};
+	int32_t vertexOffset {};
+	uint32_t firstInstance {};
+};
+
 class VulkanInterface {
   public:
 	VulkanInterface();
@@ -160,6 +168,14 @@ class VulkanInterface {
 
 	vk::raii::CommandPool m_commandPool {nullptr};
 	std::vector<vk::raii::CommandBuffer> m_commandBuffers {};
+
+	vk::raii::Buffer m_drawCommandsBuffer {nullptr};
+	VmaAllocation m_drawCommandsAllocation {};
+
+	vk::raii::Buffer m_metadataBuffer {nullptr};
+	VmaAllocation m_metadataAllocation {};
+	uint32_t m_opaqueDrawCallsCount {};
+	uint32_t m_transparentDrawCallsCount {};
 
 	vk::raii::Image m_depthImage {nullptr};
 	VmaAllocation m_depthImageAllocation {nullptr};
@@ -265,6 +281,8 @@ class VulkanInterface {
 		vmaDestroyBuffer(m_allocator, m_tlasBuffer.release(), m_tlasAllocation);
 		vmaDestroyBuffer(m_allocator, m_tlasScratchBuffer.release(), m_tlasScratchAllocation);
 		vmaDestroyBuffer(m_allocator, m_tlasLutBuffer.release(), m_tlasLutAllocation);
+		vmaDestroyBuffer(m_allocator, m_drawCommandsBuffer.release(), m_drawCommandsAllocation);
+		vmaDestroyBuffer(m_allocator, m_metadataBuffer.release(), m_metadataAllocation);
 		vmaDestroyAllocator(m_allocator);
 		glfwDestroyWindow(m_window);
 		glfwTerminate();

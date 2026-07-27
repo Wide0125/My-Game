@@ -48,7 +48,8 @@ bool VulkanInterface::isDeviceSuitable(const vk::raii::PhysicalDevice& physicalD
 	};
 
 	return supportsVulkan1_3 and queueFamilySupportsGraphics and supportsAllExtensions and
-		   supportsRequiredFeatures and physicalDevice.getProperties().deviceType == vk::PhysicalDeviceType::eDiscreteGpu;
+		   supportsRequiredFeatures and
+		   physicalDevice.getProperties().deviceType == vk::PhysicalDeviceType::eDiscreteGpu;
 }
 
 vk::Extent2D
@@ -259,7 +260,7 @@ void VulkanInterface::copyBuffer(
 }
 
 void VulkanInterface::createDescriptorPool(uint32_t textureCount) {
-	std::array<vk::DescriptorPoolSize, 9> poolSize {
+	std::array<vk::DescriptorPoolSize, 10> poolSize {
 		{{.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
@@ -268,6 +269,7 @@ void VulkanInterface::createDescriptorPool(uint32_t textureCount) {
 		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eAccelerationStructureKHR,
 		  .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT}}
@@ -282,7 +284,7 @@ void VulkanInterface::createDescriptorPool(uint32_t textureCount) {
 }
 vk::raii::DescriptorSetLayout
 VulkanInterface::createDescriptorSetLayout(uint32_t textureCount) const {
-	std::array<vk::DescriptorSetLayoutBinding, 9> bindings {
+	std::array<vk::DescriptorSetLayoutBinding, 10> bindings {
 		{{0, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr},
 		 {.binding = 1,
 		  .descriptorType = vk::DescriptorType::eUniformBuffer,
@@ -323,6 +325,11 @@ VulkanInterface::createDescriptorSetLayout(uint32_t textureCount) const {
 		  .descriptorType = vk::DescriptorType::eStorageBuffer,
 		  .descriptorCount = 1,
 		  .stageFlags = vk::ShaderStageFlagBits::eFragment,
+		  .pImmutableSamplers = nullptr},
+		 {.binding = 9,
+		  .descriptorType = vk::DescriptorType::eStorageBuffer,
+		  .descriptorCount = 1,
+		  .stageFlags = vk::ShaderStageFlagBits::eVertex,
 		  .pImmutableSamplers = nullptr}}
 	};
 	vk::DescriptorSetLayoutCreateInfo layoutInfo {
@@ -468,6 +475,40 @@ void VulkanInterface::updateBuffers() {
 		sizeof(ModelTransformBufferObject) * modelTransforms.size()
 	);
 	m_currentScene->sortTransparentObjects();
+	std::vector<DrawIndirectCommand> drawCommands {};
+	std::vector<SubMeshMetadataBufferObject> metaData {};
+	drawCommands.reserve(m_currentScene->getModelInstancesPerMesh().size() * m_subMeshCount);
+	metaData.reserve(m_currentScene->getModelInstancesPerMesh().size() * m_subMeshCount);
+	for (const auto& transparentModelInstance: m_currentScene->getTransparentModelInstance()) {
+		for (const auto& primitiveIndex: std::get<2>(transparentModelInstance)) {
+			Mesh::SubMesh currSubMesh {
+				m_meshes[std::get<1>(transparentModelInstance)].subMeshes[primitiveIndex]
+			};
+			metaData.emplace_back(currSubMesh.materialIndex);
+
+			drawCommands.emplace_back(
+				currSubMesh.indexCount,
+				1,
+				currSubMesh.indexStart,
+				currSubMesh.vertexOffset,
+				std::get<0>(transparentModelInstance)
+			);
+		}
+	} // draw non-opaque objects
+	vmaCopyMemoryToAllocation(
+		m_allocator,
+		drawCommands.data(),
+		m_drawCommandsAllocation,
+		sizeof(DrawIndirectCommand) * m_opaqueDrawCallsCount,
+		sizeof(drawCommands[0]) * drawCommands.size()
+	);
+	vmaCopyMemoryToAllocation(
+		m_allocator,
+		metaData.data(),
+		m_metadataAllocation,
+		sizeof(SubMeshMetadataBufferObject) * m_opaqueDrawCallsCount,
+		sizeof(metaData[0]) * metaData.size()
+	);
 }
 void VulkanInterface::updateTlas() {
 	if (m_currentScene->modelsUpdated()) {

@@ -719,6 +719,67 @@ void VulkanInterface::createBuffers() {
 			m_lightAllocations[frameInFlight]
 		);
 	}
+	int offset {0};
+	std::vector<DrawIndirectCommand> drawCommands {};
+	std::vector<SubMeshMetadataBufferObject> metaData {};
+	drawCommands.reserve(m_currentScene->getModelInstancesPerMesh().size() * m_subMeshCount);
+	metaData.reserve(m_currentScene->getModelInstancesPerMesh().size() * m_subMeshCount);
+	m_opaqueDrawCallsCount = 0;
+	for (
+		uint32_t meshIndex {0}; meshIndex < m_currentScene->getModelInstancesPerMesh().size();
+		++meshIndex
+	) {
+		const Mesh& currMesh {m_meshes[meshIndex]};
+		for (const auto& subMesh: currMesh.subMeshes) {
+			if (subMesh.alphaMode == MaterialBufferObject::MASK or
+				subMesh.alphaMode == MaterialBufferObject::OPAQUE) {
+				drawCommands.emplace_back(
+					subMesh.indexCount,
+					m_currentScene->getModelInstancesPerMesh()[meshIndex],
+					subMesh.indexStart,
+					subMesh.vertexOffset,
+					offset
+				);
+				metaData.emplace_back(subMesh.materialIndex);
+				++m_opaqueDrawCallsCount;
+			}
+			offset += m_currentScene->getModelInstancesPerMesh()[meshIndex];
+		}
+	} // draw opaque objects commands
+
+	m_transparentDrawCallsCount = 0;
+	for (const auto& transparentModelInstance: m_currentScene->getTransparentModelInstance()) {
+		for (const auto& primitiveIndex: std::get<2>(transparentModelInstance)) {
+			Mesh::SubMesh currSubMesh {
+				m_meshes[std::get<1>(transparentModelInstance)].subMeshes[primitiveIndex]
+			};
+			metaData.emplace_back(currSubMesh.materialIndex);
+
+			drawCommands.emplace_back(
+				currSubMesh.indexCount,
+				1,
+				currSubMesh.indexStart,
+				currSubMesh.vertexOffset,
+				std::get<0>(transparentModelInstance)
+			);
+			++m_transparentDrawCallsCount;
+		}
+	} // draw non-opaque objects
+
+	createHostBufferWithData(
+		sizeof(drawCommands[0]) * drawCommands.size(),
+		vk::BufferUsageFlagBits::eIndirectBuffer,
+		drawCommands.data(),
+		m_drawCommandsBuffer,
+		m_drawCommandsAllocation
+	);
+	createHostBufferWithData(
+		sizeof(metaData[0]) * metaData.size(),
+		vk::BufferUsageFlagBits::eStorageBuffer,
+		metaData.data(),
+		m_metadataBuffer,
+		m_metadataAllocation
+	);
 }
 
 void VulkanInterface::createDescriptorSets(const fastgltf::Asset& asset) {
@@ -782,7 +843,10 @@ void VulkanInterface::createDescriptorSets(const fastgltf::Asset& asset) {
 		vk::DescriptorBufferInfo tlasLutBufferInfo {
 			m_tlasLutBuffer, 0, sizeof(tlasLutBufferObject) * m_tlasLutCount
 		};
-		std::array<vk::WriteDescriptorSet, 9> descriptorWrites {
+		vk::DescriptorBufferInfo metadataBufferInfo {
+			m_metadataBuffer, 0, sizeof(SubMeshMetadataBufferObject) * (m_opaqueDrawCallsCount + m_transparentDrawCallsCount)
+		};
+		std::array<vk::WriteDescriptorSet, 10> descriptorWrites {
 			{{.dstSet = m_descriptorSets[frameInFlight],
 			  .dstBinding = 0,
 			  .dstArrayElement = 0,
@@ -838,7 +902,13 @@ void VulkanInterface::createDescriptorSets(const fastgltf::Asset& asset) {
 			  .dstArrayElement = 0,
 			  .descriptorCount = 1,
 			  .descriptorType = vk::DescriptorType::eStorageBuffer,
-			  .pBufferInfo = &tlasLutBufferInfo}}
+			  .pBufferInfo = &tlasLutBufferInfo},
+			 {.dstSet = m_descriptorSets[frameInFlight],
+			  .dstBinding = 9,
+			  .dstArrayElement = 0,
+			  .descriptorCount = 1,
+			  .descriptorType = vk::DescriptorType::eStorageBuffer,
+			  .pBufferInfo = &metadataBufferInfo}}
 		};
 		m_device.updateDescriptorSets(descriptorWrites, {});
 	}
@@ -919,7 +989,9 @@ void VulkanInterface::createGraphicsPipeline() {
 	};
 
 	vk::PushConstantRange pushConstantRange {
-		.stageFlags = vk::ShaderStageFlagBits::eFragment, .offset = 0, .size = sizeof(PushConstants)
+		.stageFlags = vk::ShaderStageFlagBits::eFragment,
+		.offset = 0,
+		.size = sizeof(SubMeshMetadataBufferObject)
 	};
 
 	vk::PipelineLayoutCreateInfo pipelineLayoutInfo {

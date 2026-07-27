@@ -154,24 +154,27 @@ void VulkanInterface::createLogicalDevice() {
 		);
 	}
 
-	// query for Vulkan 1.3 features
+	// query for Vulkan features
 	vk::StructureChain<
 		vk::PhysicalDeviceFeatures2,
+		vk::PhysicalDeviceVulkan11Features,
 		vk::PhysicalDeviceVulkan12Features,
 		vk::PhysicalDeviceVulkan13Features,
 		vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT,
 		vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
 		vk::PhysicalDeviceRayQueryFeaturesKHR>
 		featureChain {
-			{.features = {.samplerAnisotropy = true}}, // vk::PhysicalDeviceFeatures2
-			{										   // .descriptorBindingPartiallyBound = true,
-			  .runtimeDescriptorArray = true,
-			  .scalarBlockLayout = true,
-			  .bufferDeviceAddress = true
-			},
-			{.synchronization2 = true,
-			 .dynamicRendering = true},		// vk::PhysicalDeviceVulkan13Features
-			{.extendedDynamicState = true}, // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
+			{.features =
+				 {.multiDrawIndirect = true,
+				  .drawIndirectFirstInstance = true,
+				  .samplerAnisotropy = true}},
+			{.shaderDrawParameters = true},
+			{.descriptorIndexing = true,
+			 .runtimeDescriptorArray = true,
+			 .scalarBlockLayout = true,
+			 .bufferDeviceAddress = true},
+			{.synchronization2 = true, .dynamicRendering = true},
+			{.extendedDynamicState = true},
 			{.accelerationStructure = true},
 			{.rayQuery = true}
 		};

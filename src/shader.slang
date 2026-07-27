@@ -14,6 +14,7 @@ struct VSOutput
 	float4 color : COLOR;
 	float2 UV : TEXCOORD0;
 	float4 tangent : TANGENT;
+	uint materialIndex;
 };
 
 struct ModelTransformBuffer {
@@ -26,7 +27,7 @@ struct VPTransformBuffer {
     float4x4 view;
 	float4x4 projection;
 	int lightCount;
-}
+} // TODO: better name
 
 struct LightBuffer {
 	enum LightType { directional, spot, point };
@@ -66,11 +67,9 @@ struct tlasLUTBuffer {
 	uint vertexOffset;
 };
 
-struct PushData { 
+struct Metadata { 
     uint materialIndex;
 };
-
-[[vk::push_constant]] ConstantBuffer<PushData> pushData;
 
 [[vk::binding(0, 0)]] StructuredBuffer<ModelTransformBuffer> modelTransform;
 [[vk::binding(1, 0)]] ConstantBuffer<VPTransformBuffer> vpTransform;
@@ -81,22 +80,24 @@ struct PushData {
 [[vk::binding(6, 0)]] StructuredBuffer<VSInput> vertices;
 [[vk::binding(7, 0)]] StructuredBuffer<uint32_t> indices;
 [[vk::binding(8, 0)]] StructuredBuffer<tlasLUTBuffer> tlasLut;
+[[vk::binding(9, 0)]] StructuredBuffer<Metadata> pushData;
 
 
 static const float PI = 3.14159265359;
 static const uint32_t UINT32_MAX = 4294967295;
 
 [shader("vertex")]
-VSOutput vertMain(VSInput input, uint instanceID : SV_VulkanInstanceID) {
+VSOutput vertMain(VSInput input, uint instanceID : SV_VulkanInstanceID, uint drawIndex : SV_DrawIndex) {
     VSOutput output;
-	float4 worldPosition = mul(modelTransform[instanceID].model, float4(input.position, 1.0));
+	float4 worldPosition = mul(modelTransform[NonUniformResourceIndex(instanceID)].model, float4(input.position, 1.0));
 	output.position = mul(vpTransform.projection, mul(vpTransform.view, worldPosition));
 	output.worldPosition = worldPosition.xyz;
 	output.color = input.color;
     output.UV = input.UV;
-	output.normal = normalize(mul(modelTransform[instanceID].normal, input.normal));
-	output.tangent.xyz = normalize(mul(modelTransform[instanceID].normal, input.tangent.xyz));
+	output.normal = normalize(mul(modelTransform[NonUniformResourceIndex(instanceID)].normal, input.normal));
+	output.tangent.xyz = normalize(mul(modelTransform[NonUniformResourceIndex(instanceID)].normal, input.tangent.xyz));
 	output.tangent.w = input.tangent.w;
+	output.materialIndex = pushData[drawIndex].materialIndex;
     return output;
 }
 
@@ -139,16 +140,16 @@ float GeometrySmith(float3 N, float3 V, float3 L, float roughness) {
 static const float EPSILON = 0.01;
 
 float2 intersection_uv(uint instanceID, uint primIndex, float2 barycentrics) {
-    uint indexOffset = tlasLut[instanceID].indexStart;
-	uint vertexOffset = tlasLut[instanceID].vertexOffset;
+    uint indexOffset = tlasLut[NonUniformResourceIndex(instanceID)].indexStart;
+	uint vertexOffset = tlasLut[NonUniformResourceIndex(instanceID)].vertexOffset;
 
-    uint i0 = indices[indexOffset + (primIndex * 3 + 0)];
-    uint i1 = indices[indexOffset + (primIndex * 3 + 1)];
-    uint i2 = indices[indexOffset + (primIndex * 3 + 2)];
+    uint i0 = indices[NonUniformResourceIndex(indexOffset + (primIndex * 3 + 0))];
+    uint i1 = indices[NonUniformResourceIndex(indexOffset + (primIndex * 3 + 1))];
+    uint i2 = indices[NonUniformResourceIndex(indexOffset + (primIndex * 3 + 2))];
 
-    float2 uv0 = vertices[i0 + vertexOffset].UV;
-    float2 uv1 = vertices[i1 + vertexOffset].UV;
-    float2 uv2 = vertices[i2 + vertexOffset].UV;
+    float2 uv0 = vertices[NonUniformResourceIndex(i0 + vertexOffset)].UV;
+    float2 uv1 = vertices[NonUniformResourceIndex(i1 + vertexOffset)].UV;
+    float2 uv2 = vertices[NonUniformResourceIndex(i2 + vertexOffset)].UV;
 
     float w0 = 1.0 - barycentrics.x - barycentrics.y;
     float w1 = barycentrics.x;
@@ -180,11 +181,11 @@ float3 inShadow(float3 point, float3 lightDirection, float3 lightRadiance) {
 
         float2 uv = intersection_uv(instanceIndex, primIndex, shadowQuery.CandidateTriangleBarycentrics());
 
-        uint materialIndex = tlasLut[instanceIndex].materialIndex;
-        float4 intersectionColor = textures[materials[materialIndex].baseColorTextureIndex].SampleLevel(uv, 0) * materials[materialIndex].baseColorFactor;
+        MaterialBuffer material = materials[NonUniformResourceIndex(tlasLut[NonUniformResourceIndex(instanceIndex)].materialIndex)];
+        float4 intersectionColor = textures[NonUniformResourceIndex(material.baseColorTextureIndex)].SampleLevel(uv, 0) * material.baseColorFactor;
 
-		if (materials[materialIndex].alphaMode == MaterialBuffer::AlphaMode::MASK) {
-			if (intersectionColor.a > materials[materialIndex].alphaCutoff) {
+		if (material.alphaMode == MaterialBuffer::AlphaMode::MASK) {
+			if (intersectionColor.a > material.alphaCutoff) {
 				shadowQuery.CommitNonOpaqueTriangleHit();
 			}
 		}
@@ -210,7 +211,7 @@ float3 inShadow(float3 point, float3 lightDirection, float3 lightRadiance) {
 
 [shader("fragment")]
 float4 fragMain(VSOutput input) : SV_TARGET {
-	MaterialBuffer currMaterial = materials[pushData.materialIndex];
+	MaterialBuffer currMaterial = materials[NonUniformResourceIndex(input.materialIndex)];
 
 	float3 N = normalize(input.normal);
 	if (currMaterial.normalTextureIndex != UINT32_MAX) {
@@ -218,7 +219,7 @@ float4 fragMain(VSOutput input) : SV_TARGET {
 		T = normalize(T - dot(T, N) * N);
 		float3 B = cross(N, T) * input.tangent.w;
 		float3x3 TBN = float3x3(T, B, N);
-		float3 mappedNormal = textures[currMaterial.normalTextureIndex].Sample(input.UV).xyz * 2.0 - 1.0;
+		float3 mappedNormal = textures[NonUniformResourceIndex(currMaterial.normalTextureIndex)].Sample(input.UV).xyz * 2.0 - 1.0;
 		N = normalize(mul(mappedNormal, TBN));
 	}
 
@@ -226,19 +227,19 @@ float4 fragMain(VSOutput input) : SV_TARGET {
 
 	float4 baseColor = currMaterial.baseColorFactor;
 	if (currMaterial.baseColorTextureIndex != UINT32_MAX) {
-		baseColor *= textures[currMaterial.baseColorTextureIndex].Sample(input.UV);
+		baseColor *= textures[NonUniformResourceIndex(currMaterial.baseColorTextureIndex)].Sample(input.UV);
 	}
 	if (currMaterial.alphaMode == MaterialBuffer::AlphaMode::MASK && baseColor.a < currMaterial.alphaCutoff) {discard;}
 
 	float metallic = currMaterial.metallicRoughnessFactor.r;
 	float roughness = currMaterial.metallicRoughnessFactor.g;
 	if (currMaterial.metallicRoughnessTextureIndex != UINT32_MAX) {
-		metallic *= textures[currMaterial.metallicRoughnessTextureIndex].Sample(input.UV).r;
-		roughness *= textures[currMaterial.metallicRoughnessTextureIndex].Sample(input.UV).g;
+		metallic *= textures[NonUniformResourceIndex(currMaterial.metallicRoughnessTextureIndex)].Sample(input.UV).r;
+		roughness *= textures[NonUniformResourceIndex(currMaterial.metallicRoughnessTextureIndex)].Sample(input.UV).g;
 	}
 	float ao = currMaterial.occlusionStrength;
 	if (currMaterial.occlusionTextureIndex != UINT32_MAX) {
-		ao *= textures[currMaterial.occlusionTextureIndex].Sample(input.UV).r;
+		ao *= textures[NonUniformResourceIndex(currMaterial.occlusionTextureIndex)].Sample(input.UV).r;
 	}
 
 	float3 F0 = float3(0.04);
