@@ -179,7 +179,7 @@ class Scene {
 		}
 	}
 
-	void sortTransparentObjects() {
+	bool sortTransparentObjects() {
 		if (m_cameraMoved) {
 			std::ranges::sort(
 				m_transparentModelInstances,
@@ -202,7 +202,9 @@ class Scene {
 				}
 			);
 			m_cameraMoved = false;
+			return true;
 		}
+		return false;
 	}
 
   private:

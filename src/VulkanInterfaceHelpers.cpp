@@ -474,41 +474,42 @@ void VulkanInterface::updateBuffers() {
 		0,
 		sizeof(ModelTransformBufferObject) * modelTransforms.size()
 	);
-	m_currentScene->sortTransparentObjects();
-	std::vector<DrawIndirectCommand> drawCommands {};
-	std::vector<SubMeshMetadataBufferObject> metaData {};
-	drawCommands.reserve(m_currentScene->getModelInstancesPerMesh().size() * m_subMeshCount);
-	metaData.reserve(m_currentScene->getModelInstancesPerMesh().size() * m_subMeshCount);
-	for (const auto& transparentModelInstance: m_currentScene->getTransparentModelInstance()) {
-		for (const auto& primitiveIndex: std::get<2>(transparentModelInstance)) {
-			Mesh::SubMesh currSubMesh {
-				m_meshes[std::get<1>(transparentModelInstance)].subMeshes[primitiveIndex]
-			};
-			metaData.emplace_back(currSubMesh.materialIndex);
+	if (m_currentScene->sortTransparentObjects()) {
+		std::vector<DrawIndirectCommand> drawCommands {};
+		std::vector<SubMeshMetadataBufferObject> metaData {};
+		drawCommands.reserve(m_currentScene->getModelInstancesPerMesh().size() * m_subMeshCount);
+		metaData.reserve(m_currentScene->getModelInstancesPerMesh().size() * m_subMeshCount);
+		for (const auto& transparentModelInstance: m_currentScene->getTransparentModelInstance()) {
+			for (const auto& primitiveIndex: std::get<2>(transparentModelInstance)) {
+				Mesh::SubMesh currSubMesh {
+					m_meshes[std::get<1>(transparentModelInstance)].subMeshes[primitiveIndex]
+				};
+				metaData.emplace_back(currSubMesh.materialIndex);
 
-			drawCommands.emplace_back(
-				currSubMesh.indexCount,
-				1,
-				currSubMesh.indexStart,
-				currSubMesh.vertexOffset,
-				std::get<0>(transparentModelInstance)
-			);
-		}
-	} // draw non-opaque objects
-	vmaCopyMemoryToAllocation(
-		m_allocator,
-		drawCommands.data(),
-		m_drawCommandsAllocation,
-		sizeof(DrawIndirectCommand) * m_opaqueDrawCallsCount,
-		sizeof(drawCommands[0]) * drawCommands.size()
-	);
-	vmaCopyMemoryToAllocation(
-		m_allocator,
-		metaData.data(),
-		m_metadataAllocation,
-		sizeof(SubMeshMetadataBufferObject) * m_opaqueDrawCallsCount,
-		sizeof(metaData[0]) * metaData.size()
-	);
+				drawCommands.emplace_back(
+					currSubMesh.indexCount,
+					1,
+					currSubMesh.indexStart,
+					currSubMesh.vertexOffset,
+					std::get<0>(transparentModelInstance)
+				);
+			}
+		} // draw non-opaque objects
+		vmaCopyMemoryToAllocation(
+			m_allocator,
+			drawCommands.data(),
+			m_drawCommandsAllocation,
+			sizeof(DrawIndirectCommand) * m_opaqueDrawCallsCount,
+			sizeof(drawCommands[0]) * drawCommands.size()
+		);
+		vmaCopyMemoryToAllocation(
+			m_allocator,
+			metaData.data(),
+			m_metadataAllocation,
+			sizeof(SubMeshMetadataBufferObject) * m_opaqueDrawCallsCount,
+			sizeof(metaData[0]) * metaData.size()
+		);
+	}
 }
 void VulkanInterface::updateTlas() {
 	if (m_currentScene->modelsUpdated()) {
