@@ -89,13 +89,13 @@ static const uint32_t UINT32_MAX = 4294967295;
 [shader("vertex")]
 VSOutput vertMain(VSInput input, uint instanceID : SV_VulkanInstanceID, uint drawIndex : SV_DrawIndex) {
     VSOutput output;
-	float4 worldPosition = mul(modelTransform[NonUniformResourceIndex(instanceID)].model, float4(input.position, 1.0));
+	float4 worldPosition = mul(modelTransform[instanceID].model, float4(input.position, 1.0));
 	output.position = mul(vpTransform.projection, mul(vpTransform.view, worldPosition));
 	output.worldPosition = worldPosition.xyz;
 	output.color = input.color;
     output.UV = input.UV;
-	output.normal = normalize(mul(modelTransform[NonUniformResourceIndex(instanceID)].normal, input.normal));
-	output.tangent.xyz = normalize(mul(modelTransform[NonUniformResourceIndex(instanceID)].normal, input.tangent.xyz));
+	output.normal = normalize(mul(modelTransform[instanceID].normal, input.normal));
+	output.tangent.xyz = normalize(mul(modelTransform[instanceID].normal, input.tangent.xyz));
 	output.tangent.w = input.tangent.w;
 	output.materialIndex = pushData[drawIndex].materialIndex;
     return output;
@@ -140,16 +140,16 @@ float GeometrySmith(float3 N, float3 V, float3 L, float roughness) {
 static const float EPSILON = 0.01;
 
 float2 intersection_uv(uint instanceID, uint primIndex, float2 barycentrics) {
-    uint indexOffset = tlasLut[NonUniformResourceIndex(instanceID)].indexStart;
-	uint vertexOffset = tlasLut[NonUniformResourceIndex(instanceID)].vertexOffset;
+    uint indexOffset = tlasLut[instanceID].indexStart;
+	uint vertexOffset = tlasLut[instanceID].vertexOffset;
 
-    uint i0 = indices[NonUniformResourceIndex(indexOffset + (primIndex * 3 + 0))];
-    uint i1 = indices[NonUniformResourceIndex(indexOffset + (primIndex * 3 + 1))];
-    uint i2 = indices[NonUniformResourceIndex(indexOffset + (primIndex * 3 + 2))];
+    uint i0 = indices[indexOffset + (primIndex * 3 + 0)];
+    uint i1 = indices[indexOffset + (primIndex * 3 + 1)];
+    uint i2 = indices[indexOffset + (primIndex * 3 + 2)];
 
-    float2 uv0 = vertices[NonUniformResourceIndex(i0 + vertexOffset)].UV;
-    float2 uv1 = vertices[NonUniformResourceIndex(i1 + vertexOffset)].UV;
-    float2 uv2 = vertices[NonUniformResourceIndex(i2 + vertexOffset)].UV;
+    float2 uv0 = vertices[i0 + vertexOffset].UV;
+    float2 uv1 = vertices[i1 + vertexOffset].UV;
+    float2 uv2 = vertices[i2 + vertexOffset].UV;
 
     float w0 = 1.0 - barycentrics.x - barycentrics.y;
     float w1 = barycentrics.x;
@@ -181,7 +181,7 @@ float3 inShadow(float3 point, float3 lightDirection, float3 lightRadiance) {
 
         float2 uv = intersection_uv(instanceIndex, primIndex, shadowQuery.CandidateTriangleBarycentrics());
 
-        MaterialBuffer material = materials[NonUniformResourceIndex(tlasLut[NonUniformResourceIndex(instanceIndex)].materialIndex)];
+        MaterialBuffer material = materials[tlasLut[instanceIndex].materialIndex];
         float4 intersectionColor = textures[NonUniformResourceIndex(material.baseColorTextureIndex)].SampleLevel(uv, 0) * material.baseColorFactor;
 
 		if (material.alphaMode == MaterialBuffer::AlphaMode::MASK) {
@@ -211,7 +211,7 @@ float3 inShadow(float3 point, float3 lightDirection, float3 lightRadiance) {
 
 [shader("fragment")]
 float4 fragMain(VSOutput input) : SV_TARGET {
-	MaterialBuffer currMaterial = materials[NonUniformResourceIndex(input.materialIndex)];
+	MaterialBuffer currMaterial = materials[input.materialIndex];
 
 	float3 N = normalize(input.normal);
 	if (currMaterial.normalTextureIndex != UINT32_MAX) {
