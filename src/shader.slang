@@ -219,7 +219,7 @@ float4 fragMain(VSOutput input) : SV_TARGET {
 		T = normalize(T - dot(T, N) * N);
 		float3 B = cross(N, T) * input.tangent.w;
 		float3x3 TBN = float3x3(T, B, N);
-		float3 mappedNormal = textures[NonUniformResourceIndex(currMaterial.normalTextureIndex)].Sample(input.UV).xyz * 2.0 - 1.0;
+		float3 mappedNormal = textures[currMaterial.normalTextureIndex].Sample(input.UV).xyz * 2.0 - 1.0;
 		N = normalize(mul(mappedNormal, TBN));
 	}
 
@@ -227,19 +227,19 @@ float4 fragMain(VSOutput input) : SV_TARGET {
 
 	float4 baseColor = currMaterial.baseColorFactor;
 	if (currMaterial.baseColorTextureIndex != UINT32_MAX) {
-		baseColor *= textures[NonUniformResourceIndex(currMaterial.baseColorTextureIndex)].Sample(input.UV);
+		baseColor *= textures[currMaterial.baseColorTextureIndex].Sample(input.UV);
 	}
 	if (currMaterial.alphaMode == MaterialBuffer::AlphaMode::MASK && baseColor.a < currMaterial.alphaCutoff) {discard;}
 
 	float metallic = currMaterial.metallicRoughnessFactor.r;
 	float roughness = currMaterial.metallicRoughnessFactor.g;
 	if (currMaterial.metallicRoughnessTextureIndex != UINT32_MAX) {
-		metallic *= textures[NonUniformResourceIndex(currMaterial.metallicRoughnessTextureIndex)].Sample(input.UV).r;
-		roughness *= textures[NonUniformResourceIndex(currMaterial.metallicRoughnessTextureIndex)].Sample(input.UV).g;
+		metallic *= textures[currMaterial.metallicRoughnessTextureIndex].Sample(input.UV).r;
+		roughness *= textures[currMaterial.metallicRoughnessTextureIndex].Sample(input.UV).g;
 	}
 	float ao = currMaterial.occlusionStrength;
 	if (currMaterial.occlusionTextureIndex != UINT32_MAX) {
-		ao *= textures[NonUniformResourceIndex(currMaterial.occlusionTextureIndex)].Sample(input.UV).r;
+		ao *= textures[currMaterial.occlusionTextureIndex].Sample(input.UV).r;
 	}
 
 	float3 F0 = float3(0.04);
