@@ -25,7 +25,7 @@ class Scene {
   public:
 	Scene(const std::string& filename, VulkanInterface& renderer) {
 		static fastgltf::Parser parser {
-			fastgltf::Extensions::KHR_texture_basisu | fastgltf::Extensions::KHR_lights_punctual
+			fastgltf::Extensions::KHR_texture_basisu | fastgltf::Extensions::KHR_lights_punctual | fastgltf::Extensions::KHR_materials_specular
 		};
 
 		std::filesystem::path path {std::string {SCENE_PATH} + "/" + filename};

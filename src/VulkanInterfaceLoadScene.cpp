@@ -743,8 +743,8 @@ void VulkanInterface::createBuffers() {
 				metaData.emplace_back(subMesh.materialIndex);
 				++m_opaqueDrawCallsCount;
 			}
-			offset += m_currentScene->getModelInstancesPerMesh()[meshIndex];
 		}
+		offset += m_currentScene->getModelInstancesPerMesh()[meshIndex];
 	} // draw opaque objects commands
 
 	m_transparentDrawCallsCount = 0;
@@ -844,7 +844,10 @@ void VulkanInterface::createDescriptorSets(const fastgltf::Asset& asset) {
 			m_tlasLutBuffer, 0, sizeof(tlasLutBufferObject) * m_tlasLutCount
 		};
 		vk::DescriptorBufferInfo metadataBufferInfo {
-			m_metadataBuffer, 0, sizeof(SubMeshMetadataBufferObject) * (m_opaqueDrawCallsCount + m_transparentDrawCallsCount)
+			m_metadataBuffer,
+			0,
+			sizeof(SubMeshMetadataBufferObject) *
+				(m_opaqueDrawCallsCount + m_transparentDrawCallsCount)
 		};
 		std::array<vk::WriteDescriptorSet, 10> descriptorWrites {
 			{{.dstSet = m_descriptorSets[frameInFlight],

@@ -13,7 +13,7 @@
 
 int main() {
 	VulkanInterface renderer {};
-	std::unique_ptr<Scene> currentScene {std::make_unique<Scene>("Scene1.glb", renderer)};
+	std::unique_ptr<Scene> currentScene {std::make_unique<Scene>("Sponza.glb", renderer)};
 	auto* window {renderer.getWindow()};
 
 	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);

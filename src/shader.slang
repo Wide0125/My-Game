@@ -139,7 +139,7 @@ float GeometrySmith(float3 N, float3 V, float3 L, float roughness) {
 
 static const float EPSILON = 0.01;
 
-float2 intersection_uv(uint instanceID, uint primIndex, float2 barycentrics) {
+float2 intersectionUV(uint instanceID, uint primIndex, float2 barycentrics) {
     uint indexOffset = tlasLut[instanceID].indexStart;
 	uint vertexOffset = tlasLut[instanceID].vertexOffset;
 
@@ -157,16 +157,21 @@ float2 intersection_uv(uint instanceID, uint primIndex, float2 barycentrics) {
 
     return w0 * uv0 + w1 * uv1 + w2 * uv2;
 }
-float3 inShadow(float3 point, float3 lightDirection, float3 lightRadiance) {
+
+float3 inShadow(float3 point, float3 lightRadiance, float3 lightPosition, float3 lightDirection, LightBuffer::LightType lightType) {
 	// return lightRadiance;
 
 	float3 radiance = lightRadiance;
-
 	RayDesc shadowRayDesc;
 	shadowRayDesc.Origin = point;
 	shadowRayDesc.Direction = lightDirection;
 	shadowRayDesc.TMin = EPSILON;
-	shadowRayDesc.TMax = 1e4;
+	if (lightType == LightBuffer::LightType::directional) {
+		shadowRayDesc.TMax = 1e4;
+	}
+	else {
+		shadowRayDesc.TMax = distance(lightPosition, point);
+	}
 
 	RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES |
              RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> shadowQuery;
@@ -179,7 +184,7 @@ float3 inShadow(float3 point, float3 lightDirection, float3 lightRadiance) {
         uint instanceIndex = shadowQuery.CandidateRayInstanceCustomIndex();
         uint primIndex = shadowQuery.CandidatePrimitiveIndex();
 
-        float2 uv = intersection_uv(instanceIndex, primIndex, shadowQuery.CandidateTriangleBarycentrics());
+        float2 uv = intersectionUV(instanceIndex, primIndex, shadowQuery.CandidateTriangleBarycentrics());
 
         MaterialBuffer material = materials[tlasLut[instanceIndex].materialIndex];
         float4 intersectionColor = textures[NonUniformResourceIndex(material.baseColorTextureIndex)].SampleLevel(uv, 0) * material.baseColorFactor;
@@ -254,7 +259,7 @@ float4 fragMain(VSOutput input) : SV_TARGET {
 			L = normalize(currLight.position - input.worldPosition);
 		}
 		else {
-			L = normalize(currLight.direction);
+			L = -normalize(currLight.direction);
 		}
 		float3 H = normalize(V + L);
 		float3 radiance;
@@ -266,7 +271,7 @@ float4 fragMain(VSOutput input) : SV_TARGET {
 		else {
 			radiance = currLight.intensity * currLight.color;
 		}
-		radiance = inShadow(input.worldPosition, L, radiance);
+		radiance = inShadow(input.worldPosition, radiance, currLight.position, L, currLight.type);
 		if (!(radiance.x == 0.0 && radiance.y == 0.0 && radiance.z == 0.0)) {
 
 			float NDF = DistributionGGX(N, H, roughness);

@@ -16,6 +16,7 @@
     "multisampling",
     "Ndot",
     "Schlick",
+    "sponza",
     "Swapchain",
     "TINYGLTF",
     "tlas",
