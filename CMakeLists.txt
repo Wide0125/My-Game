@@ -21,7 +21,7 @@ if(WIN32)
   list(APPEND CMAKE_PREFIX_PATH "${CMAKE_CURRENT_SOURCE_DIR}/glfw3.4/lib/cmake")
 endif()
 
-find_package(Vulkan 1.4.350 REQUIRED)
+find_package(Vulkan 1.4.357 REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(glm REQUIRED)
 find_package(fastgltf REQUIRED)

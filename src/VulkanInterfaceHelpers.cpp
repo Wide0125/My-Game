@@ -1,4 +1,5 @@
 #include <fstream>
+#include <print>
 
 #include "VulkanInterface.hpp"
 
@@ -101,7 +102,7 @@ void VulkanInterface::createImage(
 	vk::Format format,
 	vk::ImageTiling tiling,
 	vk::ImageUsageFlags usage,
-	vk::raii::Image& image,
+	vk::Image& image,
 	VmaAllocation& allocation
 ) const {
 	vk::ImageCreateInfo imageInfo {
@@ -125,7 +126,7 @@ void VulkanInterface::createImage(
 		VK_SUCCESS) {
 		throw std::runtime_error("Image creation failed!");
 	}
-	image = {m_device, imageTemp};
+	image = imageTemp;
 }
 [[nodiscard]] vk::raii::ImageView VulkanInterface::createImageView(
 	const vk::Image& image, vk::Format format, vk::ImageAspectFlags aspectFlags, uint32_t mipLevels
@@ -143,7 +144,7 @@ void VulkanInterface::createBuffer(
 	vk::DeviceSize size,
 	vk::BufferUsageFlags usage,
 	VmaAllocationCreateFlags allocFlags,
-	vk::raii::Buffer& buffer,
+	vk::Buffer& buffer,
 	VmaAllocation& allocation,
 	vk::DeviceSize minAlignment
 ) const {
@@ -161,18 +162,18 @@ void VulkanInterface::createBuffer(
 		VK_SUCCESS) {
 		throw std::runtime_error("Failed to create buffer!");
 	}
-	buffer = {m_device, bufferTemp};
+	buffer = bufferTemp;
 }
 
 void VulkanInterface::createGPUBufferWithData(
 	vk::DeviceSize bufferSize,
 	vk::BufferUsageFlags usageFlags,
 	const void* data,
-	vk::raii::Buffer& buffer,
+	vk::Buffer& buffer,
 	VmaAllocation& allocation,
 	vk::DeviceSize minAlignment
 ) const {
-	vk::raii::Buffer stagingBuffer {nullptr};
+	vk::Buffer stagingBuffer {nullptr};
 	VmaAllocation stagingAllocation {};
 	createBuffer(
 		bufferSize,
@@ -191,14 +192,14 @@ void VulkanInterface::createGPUBufferWithData(
 		minAlignment
 	);
 	copyBuffer(stagingBuffer, buffer, bufferSize);
-	vmaDestroyBuffer(m_allocator, stagingBuffer.release(), stagingAllocation);
+	vmaDestroyBuffer(m_allocator, stagingBuffer, stagingAllocation);
 }
 
 void VulkanInterface::createHostBufferWithData(
 	vk::DeviceSize bufferSize,
 	vk::BufferUsageFlags usageFlags,
 	const void* data,
-	vk::raii::Buffer& buffer,
+	vk::Buffer& buffer,
 	VmaAllocation& allocation,
 	vk::DeviceSize minAlignment
 ) const {
@@ -239,7 +240,7 @@ void VulkanInterface::endSingleTimeCommands(const vk::raii::CommandBuffer& comma
 
 // loadScene helper functions
 void VulkanInterface::copyBuffer(
-	vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuffer, vk::DeviceSize size
+	vk::Buffer& srcBuffer, vk::Buffer& dstBuffer, vk::DeviceSize size
 ) const {
 	vk::CommandBufferAllocateInfo allocInfo {
 		.commandPool = m_commandPool,
@@ -251,7 +252,7 @@ void VulkanInterface::copyBuffer(
 	commandCopyBuffer.begin(
 		vk::CommandBufferBeginInfo {.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit}
 	);
-	commandCopyBuffer.copyBuffer(*srcBuffer, *dstBuffer, vk::BufferCopy {.size = size});
+	commandCopyBuffer.copyBuffer(srcBuffer, dstBuffer, vk::BufferCopy {.size = size});
 	commandCopyBuffer.end();
 	m_queue.submit(
 		vk::SubmitInfo {.commandBufferCount = 1, .pCommandBuffers = &*commandCopyBuffer}, nullptr
@@ -259,7 +260,7 @@ void VulkanInterface::copyBuffer(
 	m_queue.waitIdle();
 }
 
-void VulkanInterface::createDescriptorPool(uint32_t textureCount) {
+vk::DescriptorPoolCreateInfo VulkanInterface::createDescriptorPool(uint32_t textureCount) const {
 	std::array<vk::DescriptorPoolSize, 10> poolSize {
 		{{.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
@@ -280,7 +281,7 @@ void VulkanInterface::createDescriptorPool(uint32_t textureCount) {
 		.poolSizeCount = static_cast<uint32_t>(poolSize.size()),
 		.pPoolSizes = poolSize.data()
 	};
-	m_descriptorPool = {m_device, poolInfo};
+	return poolInfo;
 }
 vk::raii::DescriptorSetLayout
 VulkanInterface::createDescriptorSetLayout(uint32_t textureCount) const {
@@ -474,7 +475,8 @@ void VulkanInterface::updateBuffers() {
 		0,
 		sizeof(ModelTransformBufferObject) * modelTransforms.size()
 	);
-	if (m_currentScene->sortTransparentObjects()) {
+	if (m_currentScene->handleCameraMovement(DDGI_PROBE_DIMENSIONS)) {
+		restructureDdgiProbes();
 		std::vector<DrawIndirectCommand> drawCommands {};
 		std::vector<SubMeshMetadataBufferObject> metaData {};
 		drawCommands.reserve(m_currentScene->getModelInstancesPerMesh().size() * m_subMeshCount);
@@ -498,16 +500,30 @@ void VulkanInterface::updateBuffers() {
 		vmaCopyMemoryToAllocation(
 			m_allocator,
 			drawCommands.data(),
-			m_drawCommandsAllocation,
+			m_drawCommandsAllocations[m_frameIndex],
 			sizeof(DrawIndirectCommand) * m_opaqueDrawCallsCount,
 			sizeof(drawCommands[0]) * drawCommands.size()
 		);
 		vmaCopyMemoryToAllocation(
 			m_allocator,
 			metaData.data(),
-			m_metadataAllocation,
+			m_metadataAllocations[m_frameIndex],
 			sizeof(SubMeshMetadataBufferObject) * m_opaqueDrawCallsCount,
 			sizeof(metaData[0]) * metaData.size()
+		);
+		std::vector<ModelTransformBufferObject> ddgiTransforms {};
+		ddgiTransforms.reserve(m_ddgiProbePositions.size());
+		for (const auto& position: m_ddgiProbePositions) {
+			ddgiTransforms.emplace_back(
+				glm::translate(position) * glm::scale(glm::vec3 {0.05, 0.05, 0.05})
+			);
+		}
+		vmaCopyMemoryToAllocation(
+			m_allocator,
+			ddgiTransforms.data(),
+			m_ddgiTransformAllocations[m_frameIndex],
+			0,
+			sizeof(ddgiTransforms[0]) * ddgiTransforms.size()
 		);
 	}
 }
@@ -570,7 +586,7 @@ void VulkanInterface::updateTlas() {
 			.pGeometries = &tlasGeometry
 		};
 
-		vk::BufferDeviceAddressInfo scratchAddressInfo {.buffer = *m_tlasScratchBuffer};
+		vk::BufferDeviceAddressInfo scratchAddressInfo {.buffer = m_tlasScratchBuffer};
 		vk::DeviceAddress scratchAddr = m_device.getBufferAddressKHR(scratchAddressInfo);
 		tlasBuildGeometryInfo.scratchData.deviceAddress = scratchAddr;
 
@@ -626,4 +642,35 @@ void VulkanInterface::updateTlas() {
 
 		m_currentScene->finishHandlingModelUpdates();
 	}
+}
+void VulkanInterface::restructureDdgiProbes() {
+
+	const std::array<std::pair<int, int>, 3>& bounds {m_currentScene->getDdgiProbeBounds()};
+	for (int x {bounds[0].first}; x <= bounds[0].second; ++x) {
+		for (int y {bounds[1].first}; y <= bounds[1].second; ++y) {
+			for (int z {bounds[2].first}; z <= bounds[2].second; ++z) {
+				size_t index {probeCoordinatesToIndex(x, y, z)};
+				if (m_ddgiProbePositions[index] != glm::vec3 {x, y, z}) {
+					m_ddgiProbePositions[index] = glm::vec3 {x, y, z};
+				}
+			}
+		}
+	}
+}
+size_t VulkanInterface::probeCoordinatesToIndex(int x, int y, int z) const {
+	const glm::vec3& cameraPosition {m_currentScene->getCameraPosition()};
+	int newX {(x + std::get<0>(DDGI_PROBE_DIMENSIONS) / 2) % std::get<0>(DDGI_PROBE_DIMENSIONS)};
+	if (newX < 0) {
+		newX += std::get<0>(DDGI_PROBE_DIMENSIONS);
+	}
+	int newY {(y + std::get<1>(DDGI_PROBE_DIMENSIONS) / 2) % std::get<1>(DDGI_PROBE_DIMENSIONS)};
+	if (newY < 0) {
+		newY += std::get<1>(DDGI_PROBE_DIMENSIONS);
+	}
+	int newZ {(z + std::get<2>(DDGI_PROBE_DIMENSIONS) / 2) % std::get<2>(DDGI_PROBE_DIMENSIONS)};
+	if (newZ < 0) {
+		newZ += std::get<2>(DDGI_PROBE_DIMENSIONS);
+	}
+	return newX * std::get<1>(DDGI_PROBE_DIMENSIONS) * std::get<2>(DDGI_PROBE_DIMENSIONS) +
+		   newY * std::get<2>(DDGI_PROBE_DIMENSIONS) + newZ;
 }

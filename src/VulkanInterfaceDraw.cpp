@@ -1,3 +1,5 @@
+#include <print>
+
 #ifndef GLM_ENABLE_EXPERIMENTAL
 #define GLM_ENABLE_EXPERIMENTAL
 #endif
@@ -7,6 +9,7 @@
 #include "VulkanInterface.hpp"
 
 void VulkanInterface::drawFrame() {
+	updateBuffers();
 	auto fenceResult =
 		m_device.waitForFences(*m_inFlightFences[m_frameIndex], vk::True, UINT64_MAX);
 	if (fenceResult != vk::Result::eSuccess) {
@@ -23,8 +26,6 @@ void VulkanInterface::drawFrame() {
 		assert(result == vk::Result::eTimeout || result == vk::Result::eNotReady);
 		throw std::runtime_error("failed to acquire swap chain image!");
 	}
-
-	updateBuffers();
 	updateTlas();
 
 	m_device.resetFences(*m_inFlightFences[m_frameIndex]); // check fences
@@ -48,7 +49,7 @@ void VulkanInterface::drawFrame() {
 	);
 	// Transition depth image to depth attachment optimal layout
 	transition_image_layout(
-		*m_depthImage,
+		m_depthImage,
 		vk::ImageLayout::eUndefined,
 		vk::ImageLayout::eDepthAttachmentOptimal,
 		vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
@@ -108,10 +109,28 @@ void VulkanInterface::drawFrame() {
 		)
 	);
 	commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), m_swapChainExtent));
-	commandBuffer.bindVertexBuffers(0, *m_vertexBuffer, {0});
+	commandBuffer.bindVertexBuffers(0, m_vertexBuffer, {0});
 	commandBuffer.bindIndexBuffer(m_indexBuffer, 0, vk::IndexType::eUint32);
 
-	commandBuffer.drawIndexedIndirect(m_drawCommandsBuffer, 0, m_opaqueDrawCallsCount + m_transparentDrawCallsCount, sizeof(DrawIndirectCommand));
+	commandBuffer.drawIndexedIndirect(
+		m_drawCommandsBuffers[m_frameIndex],
+		0,
+		m_opaqueDrawCallsCount + m_transparentDrawCallsCount,
+		sizeof(DrawIndirectCommand)
+	);
+
+	commandBuffer.bindDescriptorSets(
+		vk::PipelineBindPoint::eGraphics,
+		m_pipelineLayout,
+		0,
+		*m_ddgiDescriptorSets[m_frameIndex],
+		nullptr
+	);
+	commandBuffer.drawIndexedIndirect(m_ddgiDrawCommandsBuffer, 0, 1, sizeof(DrawIndirectCommand));
+	const std::array<std::pair<int, int>, 3>& bounds {m_currentScene->getDdgiProbeBounds()};
+	if (m_currentScene->withinBounds(0, 0, 0)) {
+		std::println("{}", probeCoordinatesToIndex(0, 0, 0));
+	}
 
 	commandBuffer.endRendering();
 	transition_image_layout(

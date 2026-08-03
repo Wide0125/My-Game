@@ -32,6 +32,8 @@ struct VPTransformBufferObject {
 
 struct SubMeshMetadataBufferObject {
 	uint32_t materialIndex {};
+	enum MeshType { NORMAL, PROBE };
+	MeshType type {NORMAL};
 };
 
 struct Vertex {
@@ -125,9 +127,10 @@ class VulkanInterface {
 
 	GLFWwindow* const getWindow() const { return m_window; }
 
-  private:
 	static constexpr int MAX_FRAMES_IN_FLIGHT {2};
-
+	static constexpr int DDGI_LEVELS {4};
+	static constexpr std::tuple<int, int, int> DDGI_PROBE_DIMENSIONS {32, 32, 4}; // x, y, z
+  private:
 	static constexpr int WIDTH {800};
 	static constexpr int HEIGHT {600};
 
@@ -169,22 +172,22 @@ class VulkanInterface {
 	vk::raii::CommandPool m_commandPool {nullptr};
 	std::vector<vk::raii::CommandBuffer> m_commandBuffers {};
 
-	vk::raii::Buffer m_drawCommandsBuffer {nullptr};
-	VmaAllocation m_drawCommandsAllocation {};
+	std::array<vk::Buffer, MAX_FRAMES_IN_FLIGHT> m_drawCommandsBuffers {};
+	std::array<VmaAllocation, MAX_FRAMES_IN_FLIGHT> m_drawCommandsAllocations {};
 
-	vk::raii::Buffer m_metadataBuffer {nullptr};
-	VmaAllocation m_metadataAllocation {};
+	std::array<vk::Buffer, MAX_FRAMES_IN_FLIGHT> m_metadataBuffers {};
+	std::array<VmaAllocation, MAX_FRAMES_IN_FLIGHT> m_metadataAllocations {};
 	uint32_t m_opaqueDrawCallsCount {};
 	uint32_t m_transparentDrawCallsCount {};
 
-	vk::raii::Image m_depthImage {nullptr};
+	vk::Image m_depthImage {nullptr};
 	VmaAllocation m_depthImageAllocation {nullptr};
 	vk::raii::ImageView m_depthImageView {nullptr};
 
-	vk::raii::Buffer m_vertexBuffer {nullptr};
+	vk::Buffer m_vertexBuffer {nullptr};
 	VmaAllocation m_vertexAllocation {};
 	uint32_t m_vertexCount {};
-	vk::raii::Buffer m_indexBuffer {nullptr};
+	vk::Buffer m_indexBuffer {nullptr};
 	VmaAllocation m_indexAllocation {};
 	uint32_t m_indexCount {};
 	struct Mesh {
@@ -210,44 +213,48 @@ class VulkanInterface {
 	std::vector<vk::raii::ImageView> m_textureImageViews {};
 	std::vector<vk::raii::Sampler> m_textureSamplers {};
 
-	vk::raii::Buffer m_materialBuffer {nullptr};
+	vk::Buffer m_materialBuffer {nullptr};
 	VmaAllocation m_materialAllocation {};
 
-	std::array<vk::raii::Buffer, MAX_FRAMES_IN_FLIGHT> m_modelTransformBuffers {
-		{{nullptr}, {nullptr}}
+	std::array<vk::Buffer, MAX_FRAMES_IN_FLIGHT> m_modelTransformBuffers {
+
 	};
 	std::array<VmaAllocation, MAX_FRAMES_IN_FLIGHT> m_modelTransformAllocations {};
 
-	std::array<vk::raii::Buffer, MAX_FRAMES_IN_FLIGHT> m_vpTransformBuffers {
-		{{nullptr}, {nullptr}}
+	std::array<vk::Buffer, MAX_FRAMES_IN_FLIGHT> m_vpTransformBuffers {
+
 	};
 	std::array<VmaAllocation, MAX_FRAMES_IN_FLIGHT> m_vpTransformAllocations {};
 
-	std::array<vk::raii::Buffer, MAX_FRAMES_IN_FLIGHT> m_lightBuffers {{{nullptr}, {nullptr}}};
+	std::array<vk::Buffer, MAX_FRAMES_IN_FLIGHT> m_lightBuffers {};
 	std::array<VmaAllocation, MAX_FRAMES_IN_FLIGHT> m_lightAllocations {};
 
 	vk::raii::DescriptorSetLayout m_descriptorSetLayout {nullptr};
 	vk::raii::DescriptorPool m_descriptorPool {nullptr};
 	std::vector<vk::raii::DescriptorSet> m_descriptorSets {};
 
+	vk::raii::DescriptorSetLayout m_ddgiDescriptorSetLayout {nullptr};
+	vk::raii::DescriptorPool m_ddgiDescriptorPool {nullptr};
+	std::vector<vk::raii::DescriptorSet> m_ddgiDescriptorSets {};
+
 	vk::raii::Pipeline m_graphicsPipeline {nullptr};
 	vk::raii::PipelineLayout m_pipelineLayout {nullptr};
 
-	std::vector<vk::raii::Buffer> m_blasBuffers {};
+	std::vector<vk::Buffer> m_blasBuffers {};
 	std::vector<VmaAllocation> m_blasAllocations {};
 	std::vector<vk::raii::AccelerationStructureKHR> m_blasHandles {};
 
 	std::vector<vk::AccelerationStructureInstanceKHR> m_blasInstances {};
-	vk::raii::Buffer m_blasInstanceBuffer {nullptr};
+	vk::Buffer m_blasInstanceBuffer {nullptr};
 	VmaAllocation m_blasInstanceAllocation {};
 
-	vk::raii::Buffer m_tlasBuffer {nullptr};
+	vk::Buffer m_tlasBuffer {nullptr};
 	VmaAllocation m_tlasAllocation {nullptr};
-	vk::raii::Buffer m_tlasScratchBuffer {nullptr};
+	vk::Buffer m_tlasScratchBuffer {nullptr};
 	VmaAllocation m_tlasScratchAllocation {nullptr};
 	vk::raii::AccelerationStructureKHR m_tlas {nullptr};
 
-	vk::raii::Buffer m_tlasLutBuffer {nullptr};
+	vk::Buffer m_tlasLutBuffer {nullptr};
 	VmaAllocation m_tlasLutAllocation {};
 	uint32_t m_tlasLutCount {};
 
@@ -255,34 +262,57 @@ class VulkanInterface {
 
 	uint32_t m_frameIndex {0};
 
+	std::vector<glm::vec3> m_ddgiProbePositions {};
+
+	std::array<vk::Image, 4> m_ddgiIrradianceImages {};
+	std::array<VmaAllocation, 4> m_ddgiIrradianceAllocations {};
+
+	std::array<vk::Image, 4> m_ddgiDepthImages {};
+	std::array<VmaAllocation, 4> m_ddgiDepthAllocations {};
+
+	std::array<vk::Buffer, MAX_FRAMES_IN_FLIGHT> m_ddgiTransformBuffers {};
+	std::array<VmaAllocation, MAX_FRAMES_IN_FLIGHT> m_ddgiTransformAllocations {};
+
+	vk::Buffer m_ddgiMetadataBuffer {};
+	VmaAllocation m_ddgiMetadataAllocation {};
+
+	vk::Buffer m_ddgiDrawCommandsBuffer {};
+	VmaAllocation m_ddgiDrawCommandsAllocation {};
+
 	void initWindow(); // initialize GLFW window for Vulkan
 	void initVulkan(); // initialize Vulkan
 	void cleanup() {
 		m_textureImages.clear();
-		vmaDestroyImage(m_allocator, m_depthImage.release(), m_depthImageAllocation);
-		vmaDestroyBuffer(m_allocator, m_materialBuffer.release(), m_materialAllocation);
-		vmaDestroyBuffer(m_allocator, m_vertexBuffer.release(), m_vertexAllocation);
-		vmaDestroyBuffer(m_allocator, m_indexBuffer.release(), m_indexAllocation);
+		vmaDestroyImage(m_allocator, m_depthImage, m_depthImageAllocation);
+		vmaDestroyBuffer(m_allocator, m_materialBuffer, m_materialAllocation);
+		vmaDestroyBuffer(m_allocator, m_vertexBuffer, m_vertexAllocation);
+		vmaDestroyBuffer(m_allocator, m_indexBuffer, m_indexAllocation);
 		for (int i {0}; i < MAX_FRAMES_IN_FLIGHT; ++i) {
 			vmaDestroyBuffer(
-				m_allocator, m_modelTransformBuffers[i].release(), m_modelTransformAllocations[i]
+				m_allocator, m_modelTransformBuffers[i], m_modelTransformAllocations[i]
 			);
-			vmaDestroyBuffer(
-				m_allocator, m_vpTransformBuffers[i].release(), m_vpTransformAllocations[i]
-			);
-			vmaDestroyBuffer(m_allocator, m_lightBuffers[i].release(), m_lightAllocations[i]);
+			vmaDestroyBuffer(m_allocator, m_vpTransformBuffers[i], m_vpTransformAllocations[i]);
+			vmaDestroyBuffer(m_allocator, m_lightBuffers[i], m_lightAllocations[i]);
+			vmaDestroyBuffer(m_allocator, m_drawCommandsBuffers[i], m_drawCommandsAllocations[i]);
+			vmaDestroyBuffer(m_allocator, m_metadataBuffers[i], m_metadataAllocations[i]);
 		}
 		for (int blasIndex {0}; blasIndex < m_blasBuffers.size(); ++blasIndex) {
-			vmaDestroyBuffer(
-				m_allocator, m_blasBuffers[blasIndex].release(), m_blasAllocations[blasIndex]
+			vmaDestroyBuffer(m_allocator, m_blasBuffers[blasIndex], m_blasAllocations[blasIndex]);
+		}
+		vmaDestroyBuffer(m_allocator, m_blasInstanceBuffer, m_blasInstanceAllocation);
+		vmaDestroyBuffer(m_allocator, m_tlasBuffer, m_tlasAllocation);
+		vmaDestroyBuffer(m_allocator, m_tlasScratchBuffer, m_tlasScratchAllocation);
+		vmaDestroyBuffer(m_allocator, m_tlasLutBuffer, m_tlasLutAllocation);
+		for (int ddgiLevel {0}; ddgiLevel < DDGI_LEVELS; ++ddgiLevel) {
+			vmaDestroyImage(
+				m_allocator,
+				m_ddgiIrradianceImages[ddgiLevel],
+				m_ddgiIrradianceAllocations[ddgiLevel]
+			);
+			vmaDestroyImage(
+				m_allocator, m_ddgiDepthImages[ddgiLevel], m_ddgiDepthAllocations[ddgiLevel]
 			);
 		}
-		vmaDestroyBuffer(m_allocator, m_blasInstanceBuffer.release(), m_blasInstanceAllocation);
-		vmaDestroyBuffer(m_allocator, m_tlasBuffer.release(), m_tlasAllocation);
-		vmaDestroyBuffer(m_allocator, m_tlasScratchBuffer.release(), m_tlasScratchAllocation);
-		vmaDestroyBuffer(m_allocator, m_tlasLutBuffer.release(), m_tlasLutAllocation);
-		vmaDestroyBuffer(m_allocator, m_drawCommandsBuffer.release(), m_drawCommandsAllocation);
-		vmaDestroyBuffer(m_allocator, m_metadataBuffer.release(), m_metadataAllocation);
 		vmaDestroyAllocator(m_allocator);
 		glfwDestroyWindow(m_window);
 		glfwTerminate();
@@ -316,7 +346,7 @@ class VulkanInterface {
 		vk::Format,
 		vk::ImageTiling,
 		vk::ImageUsageFlags,
-		vk::raii::Image&,
+		vk::Image&,
 		VmaAllocation&
 	) const;
 	[[nodiscard]] vk::raii::ImageView
@@ -327,7 +357,7 @@ class VulkanInterface {
 		vk::DeviceSize,
 		vk::BufferUsageFlags,
 		VmaAllocationCreateFlags,
-		vk::raii::Buffer&,
+		vk::Buffer&,
 		VmaAllocation&,
 		vk::DeviceSize = 0
 	) const;
@@ -335,7 +365,7 @@ class VulkanInterface {
 		vk::DeviceSize,
 		vk::BufferUsageFlags,
 		const void*,
-		vk::raii::Buffer&,
+		vk::Buffer&,
 		VmaAllocation&,
 		vk::DeviceSize = 0
 	) const;
@@ -343,7 +373,7 @@ class VulkanInterface {
 		vk::DeviceSize,
 		vk::BufferUsageFlags,
 		const void*,
-		vk::raii::Buffer&,
+		vk::Buffer&,
 		VmaAllocation&,
 		vk::DeviceSize = 0
 	) const;
@@ -364,14 +394,14 @@ class VulkanInterface {
 	void transitionImageLayout(
 		const vk::raii::Image&, const vk::ImageLayout, const vk::ImageLayout, uint32_t
 	) const;
-	void
-	copyBufferToImage(const vk::raii::Buffer&, const vk::raii::Image&, uint32_t, uint32_t) const;
+	void copyBufferToImage(const vk::Buffer&, const vk::raii::Image&, uint32_t, uint32_t) const;
 	void createTextureImages(const fastgltf::Asset&);
 
 	void createTextureSamplers(const fastgltf::Asset&);
 
-	void
-	copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuffer, vk::DeviceSize size) const;
+	void createDdgiProbes();
+
+	void copyBuffer(vk::Buffer& srcBuffer, vk::Buffer& dstBuffer, vk::DeviceSize size) const;
 	void loadMeshes(const fastgltf::Asset&);
 
 	void createAccelerationStructures();
@@ -380,7 +410,7 @@ class VulkanInterface {
 
 	void createBuffers();
 
-	void createDescriptorPool(uint32_t);
+	vk::DescriptorPoolCreateInfo createDescriptorPool(uint32_t) const;
 	vk::raii::DescriptorSetLayout createDescriptorSetLayout(uint32_t) const;
 	void createDescriptorSets(const fastgltf::Asset&);
 
@@ -404,6 +434,8 @@ class VulkanInterface {
 	);
 	void updateBuffers();
 	void updateTlas();
+	void restructureDdgiProbes();
+	size_t probeCoordinatesToIndex(int, int, int) const;
 	void recreateSwapChain();
 };
 

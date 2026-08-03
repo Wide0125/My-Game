@@ -170,6 +170,7 @@ void VulkanInterface::createLogicalDevice() {
 				  .samplerAnisotropy = true}},
 			{.shaderDrawParameters = true},
 			{.descriptorIndexing = true,
+			 .shaderSampledImageArrayNonUniformIndexing = true,
 			 .runtimeDescriptorArray = true,
 			 .scalarBlockLayout = true,
 			 .bufferDeviceAddress = true},

@@ -22,12 +22,14 @@ void VulkanInterface::loadScene(const fastgltf::Asset& asset, Scene* pScene) {
 	createTextureImages(asset);
 	createTextureSamplers(asset);
 	loadMeshes(asset);
+	createDdgiProbes();
 	createAccelerationStructures();
 	loadMaterials(asset);
 	createBuffers();
 	createDescriptorSets(asset);
 	createGraphicsPipeline();
 }
+
 void VulkanInterface::createTextureImages(const fastgltf::Asset& asset) {
 	m_textureImages.clear();
 	m_textureImageMemories.clear();
@@ -142,6 +144,7 @@ void VulkanInterface::createTextureImages(const fastgltf::Asset& asset) {
 	for (const auto& texture: asset.textures) {
 	}
 }
+
 void VulkanInterface::createTextureSamplers(const fastgltf::Asset& asset) {
 	m_textureSamplers.clear();
 	m_textureSamplers.reserve(asset.samplers.size());
@@ -355,13 +358,85 @@ void VulkanInterface::loadMeshes(const fastgltf::Asset& asset) {
 	);
 }
 
+void VulkanInterface::createDdgiProbes() {
+	for (int ddgiTextureIndex {0}; ddgiTextureIndex < 4; ++ddgiTextureIndex) {
+		createImage(
+			6144,
+			6144,
+			1,
+			vk::Format::eB10G11R11UfloatPack32,
+			vk::ImageTiling::eOptimal,
+			vk::ImageUsageFlagBits::eStorage,
+			m_ddgiIrradianceImages[ddgiTextureIndex],
+			m_ddgiIrradianceAllocations[ddgiTextureIndex]
+		);
+	}
+	for (int ddgiTextureIndex {0}; ddgiTextureIndex < 4; ++ddgiTextureIndex) {
+		createImage(
+			16384,
+			16384,
+			1,
+			vk::Format::eR16G16Sfloat,
+			vk::ImageTiling::eOptimal,
+			vk::ImageUsageFlagBits::eStorage,
+			m_ddgiDepthImages[ddgiTextureIndex],
+			m_ddgiDepthAllocations[ddgiTextureIndex]
+		);
+	}
+	const std::array<std::pair<int, int>, 3>& bounds {m_currentScene->getDdgiProbeBounds()};
+	m_ddgiProbePositions.reserve(
+		std::get<0>(DDGI_PROBE_DIMENSIONS) * std::get<1>(DDGI_PROBE_DIMENSIONS) *
+		std::get<2>(DDGI_PROBE_DIMENSIONS)
+	);
+	for (int x {bounds[0].first}; x <= bounds[0].second; ++x) {
+		for (int y {bounds[1].first}; y <= bounds[1].second; ++y) {
+			for (int z {bounds[2].first}; z <= bounds[2].second; ++z) {
+				m_ddgiProbePositions.emplace_back(x, y, z);
+				probeCoordinatesToIndex(x, y, z);
+			}
+		}
+	}
+	DrawIndirectCommand ddgiDrawCommand {
+		m_meshes[1].subMeshes[0].indexCount,
+		static_cast<uint32_t>(m_ddgiProbePositions.size()),
+		m_meshes[1].subMeshes[0].indexStart,
+		static_cast<int32_t>(m_meshes[1].subMeshes[0].vertexOffset),
+		0
+	};
+	SubMeshMetadataBufferObject ddgiMetaData {
+		m_meshes[1].subMeshes[0].materialIndex, SubMeshMetadataBufferObject::PROBE
+	};
+	for (int frameIndex {0}; frameIndex < MAX_FRAMES_IN_FLIGHT; ++frameIndex) {
+		createBuffer(
+			sizeof(ModelTransformBufferObject) * m_ddgiProbePositions.size(),
+			vk::BufferUsageFlagBits::eStorageBuffer,
+			VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+				VMA_ALLOCATION_CREATE_MAPPED_BIT,
+			m_ddgiTransformBuffers[frameIndex],
+			m_ddgiTransformAllocations[frameIndex]
+		);
+	}
+	createHostBufferWithData(
+		sizeof(ddgiDrawCommand),
+		vk::BufferUsageFlagBits::eIndirectBuffer,
+		&ddgiDrawCommand,
+		m_ddgiDrawCommandsBuffer,
+		m_ddgiDrawCommandsAllocation
+	);
+	createHostBufferWithData(
+		sizeof(ddgiMetaData),
+		vk::BufferUsageFlagBits::eStorageBuffer,
+		&ddgiMetaData,
+		m_ddgiMetadataBuffer,
+		m_ddgiMetadataAllocation
+	);
+}
+
 void VulkanInterface::createAccelerationStructures() {
 	vk::DeviceAddress vertexAddress {m_device.getBufferAddress({.buffer = m_vertexBuffer})};
 	vk::DeviceAddress indexAddress {m_device.getBufferAddress({.buffer = m_indexBuffer})};
 	for (size_t blasIndex {0}; blasIndex < m_blasBuffers.size(); ++blasIndex) {
-		vmaDestroyBuffer(
-			m_allocator, m_blasBuffers[blasIndex].release(), m_blasAllocations[blasIndex]
-		);
+		vmaDestroyBuffer(m_allocator, m_blasBuffers[blasIndex], m_blasAllocations[blasIndex]);
 	}
 	m_blasBuffers.clear();
 	m_blasAllocations.clear();
@@ -404,7 +479,7 @@ void VulkanInterface::createAccelerationStructures() {
 				)
 			};
 
-			vk::raii::Buffer scratchBuffer {nullptr};
+			vk::Buffer scratchBuffer {nullptr};
 			VmaAllocation scratchAllocation {};
 			createBuffer(
 				blasBuildSizes.buildScratchSize,
@@ -419,7 +494,7 @@ void VulkanInterface::createAccelerationStructures() {
 			vk::DeviceAddress scratchAddress {m_device.getBufferAddress(scratchAddressInfo)};
 			blasBuildGeometryInfo.scratchData.deviceAddress = scratchAddress;
 
-			vk::raii::Buffer blasBuffer {nullptr};
+			vk::Buffer blasBuffer {nullptr};
 			VmaAllocation blasAllocation {};
 			createBuffer(
 				blasBuildSizes.accelerationStructureSize,
@@ -456,7 +531,7 @@ void VulkanInterface::createAccelerationStructures() {
 			);
 			endSingleTimeCommands(*commandBuffer);
 
-			vmaDestroyBuffer(m_allocator, scratchBuffer.release(), scratchAllocation);
+			vmaDestroyBuffer(m_allocator, scratchBuffer, scratchAllocation);
 		}
 	}
 	m_blasInstances.clear();
@@ -531,7 +606,8 @@ void VulkanInterface::createAccelerationStructures() {
 			vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR,
 		m_blasInstances.data(),
 		m_blasInstanceBuffer,
-		m_blasInstanceAllocation
+		m_blasInstanceAllocation,
+		16
 	);
 
 	vk::BufferDeviceAddressInfo instanceAddressInfo {.buffer = m_blasInstanceBuffer};
@@ -569,7 +645,7 @@ void VulkanInterface::createAccelerationStructures() {
 		m_accelerationStructureScratchOffset
 	);
 
-	vk::BufferDeviceAddressInfo scratchAddressInfo {.buffer = *m_tlasScratchBuffer};
+	vk::BufferDeviceAddressInfo scratchAddressInfo {.buffer = m_tlasScratchBuffer};
 	vk::DeviceAddress scratchAddress {m_device.getBufferAddress(scratchAddressInfo)};
 	tlasBuildGeometryInfo.scratchData.deviceAddress = scratchAddress;
 
@@ -766,25 +842,27 @@ void VulkanInterface::createBuffers() {
 		}
 	} // draw non-opaque objects
 
-	createHostBufferWithData(
-		sizeof(drawCommands[0]) * drawCommands.size(),
-		vk::BufferUsageFlagBits::eIndirectBuffer,
-		drawCommands.data(),
-		m_drawCommandsBuffer,
-		m_drawCommandsAllocation
-	);
-	createHostBufferWithData(
-		sizeof(metaData[0]) * metaData.size(),
-		vk::BufferUsageFlagBits::eStorageBuffer,
-		metaData.data(),
-		m_metadataBuffer,
-		m_metadataAllocation
-	);
+	for (int frameIndex {0}; frameIndex < MAX_FRAMES_IN_FLIGHT; ++frameIndex) {
+		createHostBufferWithData(
+			sizeof(drawCommands[0]) * drawCommands.size(),
+			vk::BufferUsageFlagBits::eIndirectBuffer,
+			drawCommands.data(),
+			m_drawCommandsBuffers[frameIndex],
+			m_drawCommandsAllocations[frameIndex]
+		);
+		createHostBufferWithData(
+			sizeof(metaData[0]) * metaData.size(),
+			vk::BufferUsageFlagBits::eStorageBuffer,
+			metaData.data(),
+			m_metadataBuffers[frameIndex],
+			m_metadataAllocations[frameIndex]
+		);
+	}
 }
 
 void VulkanInterface::createDescriptorSets(const fastgltf::Asset& asset) {
 	size_t textureCount {asset.textures.size()};
-	createDescriptorPool(textureCount);
+	m_descriptorPool = {m_device, createDescriptorPool(textureCount)};
 	m_descriptorSetLayout = createDescriptorSetLayout(textureCount);
 	std::vector<vk::DescriptorSetLayout> layouts {MAX_FRAMES_IN_FLIGHT, m_descriptorSetLayout};
 	vk::DescriptorSetAllocateInfo allocInfo {
@@ -793,6 +871,18 @@ void VulkanInterface::createDescriptorSets(const fastgltf::Asset& asset) {
 		.pSetLayouts = layouts.data()
 	};
 	m_descriptorSets = m_device.allocateDescriptorSets(allocInfo);
+
+	m_ddgiDescriptorPool = {m_device, createDescriptorPool(textureCount)}; // ddgi stuff
+	m_ddgiDescriptorSetLayout = createDescriptorSetLayout(textureCount);
+	std::vector<vk::DescriptorSetLayout> ddgiLayouts {
+		MAX_FRAMES_IN_FLIGHT, m_ddgiDescriptorSetLayout
+	};
+	vk::DescriptorSetAllocateInfo ddgiAllocInfo {
+		.descriptorPool = m_ddgiDescriptorPool,
+		.descriptorSetCount = static_cast<uint32_t>(layouts.size()),
+		.pSetLayouts = ddgiLayouts.data()
+	};
+	m_ddgiDescriptorSets = m_device.allocateDescriptorSets(ddgiAllocInfo);
 
 	for (size_t frameInFlight {0}; frameInFlight < MAX_FRAMES_IN_FLIGHT; ++frameInFlight) {
 		vk::DescriptorBufferInfo modelTransformBufferInfo {
@@ -844,7 +934,7 @@ void VulkanInterface::createDescriptorSets(const fastgltf::Asset& asset) {
 			m_tlasLutBuffer, 0, sizeof(tlasLutBufferObject) * m_tlasLutCount
 		};
 		vk::DescriptorBufferInfo metadataBufferInfo {
-			m_metadataBuffer,
+			m_metadataBuffers[frameInFlight],
 			0,
 			sizeof(SubMeshMetadataBufferObject) *
 				(m_opaqueDrawCallsCount + m_transparentDrawCallsCount)
@@ -914,6 +1004,82 @@ void VulkanInterface::createDescriptorSets(const fastgltf::Asset& asset) {
 			  .pBufferInfo = &metadataBufferInfo}}
 		};
 		m_device.updateDescriptorSets(descriptorWrites, {});
+
+		vk::DescriptorBufferInfo ddgiModelTransformBufferInfo {
+			.buffer = m_ddgiTransformBuffers[m_frameIndex],
+			.offset = 0,
+			.range = sizeof(ModelTransformBufferObject) * m_ddgiProbePositions.size()
+		};
+		vk::DescriptorBufferInfo ddgiMetadataBufferInfo {
+			.buffer = m_ddgiMetadataBuffer,
+			.offset = 0,
+			.range = sizeof(SubMeshMetadataBufferObject)
+		};
+		std::array<vk::WriteDescriptorSet, 10> ddgiDescriptorWrites {
+			{{.dstSet = m_ddgiDescriptorSets[frameInFlight],
+			  .dstBinding = 0,
+			  .dstArrayElement = 0,
+			  .descriptorCount = 1,
+			  .descriptorType = vk::DescriptorType::eStorageBuffer,
+			  .pBufferInfo = &ddgiModelTransformBufferInfo},
+			 {.dstSet = m_ddgiDescriptorSets[frameInFlight],
+			  .dstBinding = 1,
+			  .dstArrayElement = 0,
+			  .descriptorCount = 1,
+			  .descriptorType = vk::DescriptorType::eUniformBuffer,
+			  .pBufferInfo = &vpTransformBufferInfo},
+			 {.dstSet = m_ddgiDescriptorSets[frameInFlight],
+			  .dstBinding = 2,
+			  .dstArrayElement = 0,
+			  .descriptorCount = 1,
+			  .descriptorType = vk::DescriptorType::eStorageBuffer,
+			  .pBufferInfo = &materialBufferInfo},
+			 {
+				 .dstSet = m_ddgiDescriptorSets[frameInFlight],
+				 .dstBinding = 3,
+				 .dstArrayElement = 0,
+				 .descriptorCount = static_cast<uint32_t>(textureCount),
+				 .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+				 .pImageInfo = imageInfos.data(),
+			 },
+			 {.dstSet = m_ddgiDescriptorSets[frameInFlight],
+			  .dstBinding = 4,
+			  .dstArrayElement = 0,
+			  .descriptorCount = 1,
+			  .descriptorType = vk::DescriptorType::eStorageBuffer,
+			  .pBufferInfo = &lightBufferInfo},
+			 {.pNext = &accelerationStructureInfo,
+			  .dstSet = m_ddgiDescriptorSets[frameInFlight],
+			  .dstBinding = 5,
+			  .dstArrayElement = 0,
+			  .descriptorCount = 1,
+			  .descriptorType = vk::DescriptorType::eAccelerationStructureKHR},
+			 {.dstSet = m_ddgiDescriptorSets[frameInFlight],
+			  .dstBinding = 6,
+			  .dstArrayElement = 0,
+			  .descriptorCount = 1,
+			  .descriptorType = vk::DescriptorType::eStorageBuffer,
+			  .pBufferInfo = &vertexBufferInfo},
+			 {.dstSet = m_ddgiDescriptorSets[frameInFlight],
+			  .dstBinding = 7,
+			  .dstArrayElement = 0,
+			  .descriptorCount = 1,
+			  .descriptorType = vk::DescriptorType::eStorageBuffer,
+			  .pBufferInfo = &indexBufferInfo},
+			 {.dstSet = m_ddgiDescriptorSets[frameInFlight],
+			  .dstBinding = 8,
+			  .dstArrayElement = 0,
+			  .descriptorCount = 1,
+			  .descriptorType = vk::DescriptorType::eStorageBuffer,
+			  .pBufferInfo = &tlasLutBufferInfo},
+			 {.dstSet = m_ddgiDescriptorSets[frameInFlight],
+			  .dstBinding = 9,
+			  .dstArrayElement = 0,
+			  .descriptorCount = 1,
+			  .descriptorType = vk::DescriptorType::eStorageBuffer,
+			  .pBufferInfo = &ddgiMetadataBufferInfo}}
+		};
+		m_device.updateDescriptorSets(ddgiDescriptorWrites, {});
 	}
 }
 

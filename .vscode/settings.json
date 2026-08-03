@@ -4,6 +4,7 @@
     "basisu",
     "blas",
     "blitting",
+    "ddgi",
     "fastgltf",
     "fmat",
     "GLFW",

@@ -25,7 +25,8 @@ class Scene {
   public:
 	Scene(const std::string& filename, VulkanInterface& renderer) {
 		static fastgltf::Parser parser {
-			fastgltf::Extensions::KHR_texture_basisu | fastgltf::Extensions::KHR_lights_punctual | fastgltf::Extensions::KHR_materials_specular
+			fastgltf::Extensions::KHR_texture_basisu | fastgltf::Extensions::KHR_lights_punctual |
+			fastgltf::Extensions::KHR_materials_specular
 		};
 
 		std::filesystem::path path {std::string {SCENE_PATH} + "/" + filename};
@@ -51,10 +52,10 @@ class Scene {
 
 		m_nodes.reserve(asset->nodes.size());
 		m_modelInstancesPerMesh.resize(asset->meshes.size());
+		auto flattenQueue {getNodes(asset.get())};
 		m_modelInstanceTransforms.reserve(
 			std::ranges::fold_left(m_modelInstancesPerMesh, 0, std::plus {})
 		);
-		auto flattenQueue {getNodes(asset.get())};
 		for (size_t meshIndex {0}; meshIndex < flattenQueue.size(); ++meshIndex) {
 			for (auto NodeIndex: flattenQueue[meshIndex]) {
 				m_modelInstanceTransforms.push_back({});
@@ -96,6 +97,20 @@ class Scene {
 			traverseTreeInitial(parentNodeIndex, glm::identity<glm::mat4>());
 		}
 
+		const glm::vec3& cameraPos {m_sceneCamera.getCameraPosition()};
+		m_ddgiProbeBounds[0].first = static_cast<int>(std::floor(cameraPos.x)) -
+									 std::get<0>(renderer.DDGI_PROBE_DIMENSIONS) / 2 + 1;
+		m_ddgiProbeBounds[0].second = static_cast<int>(std::floor(cameraPos.x)) +
+									  std::get<0>(renderer.DDGI_PROBE_DIMENSIONS) / 2;
+		m_ddgiProbeBounds[1].first = static_cast<int>(std::floor(cameraPos.y)) -
+									 std::get<1>(renderer.DDGI_PROBE_DIMENSIONS) / 2 + 1;
+		m_ddgiProbeBounds[1].second = static_cast<int>(std::floor(cameraPos.y)) +
+									  std::get<1>(renderer.DDGI_PROBE_DIMENSIONS) / 2;
+		m_ddgiProbeBounds[2].first = static_cast<int>(std::floor(cameraPos.z)) -
+									 std::get<2>(renderer.DDGI_PROBE_DIMENSIONS) / 2 + 1;
+		m_ddgiProbeBounds[2].second = static_cast<int>(std::floor(cameraPos.z)) +
+									  std::get<2>(renderer.DDGI_PROBE_DIMENSIONS) / 2;
+
 		renderer.loadScene(asset.get(), this); // load textures and models onto GPU memory
 	}
 
@@ -120,10 +135,7 @@ class Scene {
 		m_sceneCamera.moveCameraPosition(delta);
 		m_cameraMoved = true;
 	}
-	void moveCameraGaze(const glm::vec2& delta) {
-		m_sceneCamera.moveCameraGaze(delta);
-		m_cameraMoved = true;
-	}
+	void moveCameraGaze(const glm::vec2& delta) { m_sceneCamera.moveCameraGaze(delta); }
 
 	const bool modelsUpdated() { return m_modelsUpdated; }
 	void finishHandlingModelUpdates() { m_modelsUpdated = false; }
@@ -179,7 +191,7 @@ class Scene {
 		}
 	}
 
-	bool sortTransparentObjects() {
+	bool handleCameraMovement(const std::tuple<int, int, int>& ddgiDimensions) {
 		if (m_cameraMoved) {
 			std::ranges::sort(
 				m_transparentModelInstances,
@@ -201,10 +213,34 @@ class Scene {
 					return distance1 > distance2;
 				}
 			);
+
+			const glm::vec3& cameraPos {m_sceneCamera.getCameraPosition()};
+			m_ddgiProbeBounds[0].first =
+				static_cast<int>(std::floor(cameraPos.x)) - std::get<0>(ddgiDimensions) / 2 + 1;
+			m_ddgiProbeBounds[0].second =
+				static_cast<int>(std::floor(cameraPos.x)) + std::get<0>(ddgiDimensions) / 2;
+			m_ddgiProbeBounds[1].first =
+				static_cast<int>(std::floor(cameraPos.y)) - std::get<1>(ddgiDimensions) / 2 + 1;
+			m_ddgiProbeBounds[1].second =
+				static_cast<int>(std::floor(cameraPos.y)) + std::get<1>(ddgiDimensions) / 2;
+			m_ddgiProbeBounds[2].first =
+				static_cast<int>(std::floor(cameraPos.z)) - std::get<2>(ddgiDimensions) / 2 + 1;
+			m_ddgiProbeBounds[2].second =
+				static_cast<int>(std::floor(cameraPos.z)) + std::get<2>(ddgiDimensions) / 2;
+
 			m_cameraMoved = false;
 			return true;
 		}
 		return false;
+	}
+	const std::array<std::pair<int, int>, 3>& getDdgiProbeBounds() { return m_ddgiProbeBounds; }
+	bool withinBounds(int x, int y, int z) {
+		return x >= std::get<0>(m_ddgiProbeBounds).first and
+			   x <= std::get<0>(m_ddgiProbeBounds).second and
+			   y >= std::get<1>(m_ddgiProbeBounds).first and
+			   y <= std::get<1>(m_ddgiProbeBounds).second and
+			   z >= std::get<2>(m_ddgiProbeBounds).first and
+			   z <= std::get<2>(m_ddgiProbeBounds).second;
 	}
 
   private:
@@ -223,6 +259,8 @@ class Scene {
 
 	Camera m_sceneCamera {};
 	bool m_cameraMoved {false};
+
+	std::array<std::pair<int, int>, 3> m_ddgiProbeBounds {}; // x{lower, upper}, y, z
 
 	std::vector<std::vector<size_t>> getNodes(const fastgltf::Asset& asset) {
 		std::vector<std::vector<size_t>> flattenQueue {};

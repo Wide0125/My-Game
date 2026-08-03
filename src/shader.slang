@@ -6,6 +6,7 @@ struct VSInput {
 	float4 tangent : TANGENT;
 };
 
+enum MeshType {NORMAL, PROBE};
 struct VSOutput
 {
 	float4 position : SV_Position;
@@ -15,6 +16,8 @@ struct VSOutput
 	float2 UV : TEXCOORD0;
 	float4 tangent : TANGENT;
 	uint materialIndex;
+	uint instanceID;
+	MeshType meshType;
 };
 
 struct ModelTransformBuffer {
@@ -69,6 +72,7 @@ struct tlasLUTBuffer {
 
 struct Metadata { 
     uint materialIndex;
+	MeshType type;
 };
 
 [[vk::binding(0, 0)]] StructuredBuffer<ModelTransformBuffer> modelTransform;
@@ -80,7 +84,7 @@ struct Metadata {
 [[vk::binding(6, 0)]] StructuredBuffer<VSInput> vertices;
 [[vk::binding(7, 0)]] StructuredBuffer<uint32_t> indices;
 [[vk::binding(8, 0)]] StructuredBuffer<tlasLUTBuffer> tlasLut;
-[[vk::binding(9, 0)]] StructuredBuffer<Metadata> pushData;
+[[vk::binding(9, 0)]] StructuredBuffer<Metadata> metadata;
 
 
 static const float PI = 3.14159265359;
@@ -97,7 +101,9 @@ VSOutput vertMain(VSInput input, uint instanceID : SV_VulkanInstanceID, uint dra
 	output.normal = normalize(mul(modelTransform[instanceID].normal, input.normal));
 	output.tangent.xyz = normalize(mul(modelTransform[instanceID].normal, input.tangent.xyz));
 	output.tangent.w = input.tangent.w;
-	output.materialIndex = pushData[drawIndex].materialIndex;
+	output.materialIndex = metadata[drawIndex].materialIndex;
+	output.instanceID = instanceID;
+	output.meshType = metadata[drawIndex].type;
     return output;
 }
 
@@ -235,6 +241,9 @@ float4 fragMain(VSOutput input) : SV_TARGET {
 		baseColor *= textures[currMaterial.baseColorTextureIndex].Sample(input.UV);
 	}
 	if (currMaterial.alphaMode == MaterialBuffer::AlphaMode::MASK && baseColor.a < currMaterial.alphaCutoff) {discard;}
+	if (input.meshType == MeshType::PROBE) {
+		return float4(baseColor.rgb * (input.instanceID % 256) / 255, 1);
+	}
 
 	float metallic = currMaterial.metallicRoughnessFactor.r;
 	float roughness = currMaterial.metallicRoughnessFactor.g;
@@ -251,6 +260,7 @@ float4 fragMain(VSOutput input) : SV_TARGET {
 	F0 = lerp(F0, baseColor.rgb, metallic);
 
 	float3 Lo = float3(0.0);
+
 
 	for (int i = 0; i < vpTransform.lightCount; ++i) {
 		LightBuffer currLight = lights[i];
