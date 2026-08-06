@@ -1,10 +1,16 @@
 {
   "cSpell.words": [
+    "anyhit",
+    "ARGN",
     "barycentrics",
     "basisu",
     "blas",
     "blitting",
+    "cplusplus",
+    "cppm",
     "ddgi",
+    "endforeach",
+    "endfunction",
     "fastgltf",
     "fmat",
     "GLFW",
@@ -13,14 +19,22 @@
     "lerp",
     "MESHBUFFERS",
     "MODELINSTANCE",
+    "MSVC",
     "Multisample",
     "multisampling",
     "Ndot",
+    "numthreads",
+    "raii",
+    "Raygen",
+    "raygeneration",
     "Schlick",
+    "SLANGC",
+    "spirv",
     "sponza",
     "Swapchain",
     "TINYGLTF",
     "tlas",
     "VULKANINTERFACE"
-  ]
+  ],
+  "cmake.postConfigureTask": "fix_compile_commands"
 }

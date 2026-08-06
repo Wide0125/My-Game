@@ -23,6 +23,7 @@ int main() {
 
 	double prevXPos {0.0};
 	double prevYPos {0.0};
+	bool prevF1State {false};
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
 		int state = glfwGetKey(window, GLFW_KEY_W);
@@ -37,6 +38,17 @@ int main() {
 		if (state == GLFW_PRESS) {
 			break;
 		}
+#ifndef NDEBUG
+		state = glfwGetKey(window, GLFW_KEY_F1);
+		if (state == GLFW_PRESS) {
+			if (prevF1State == false) {
+				renderer.m_drawDdgiProbes = !renderer.m_drawDdgiProbes;
+			}
+			prevF1State = true;
+		} else {
+			prevF1State = false;
+		}
+#endif
 
 		double xPos, yPos;
 		glfwGetCursorPos(window, &xPos, &yPos);

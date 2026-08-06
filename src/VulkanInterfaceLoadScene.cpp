@@ -27,7 +27,9 @@ void VulkanInterface::loadScene(const fastgltf::Asset& asset, Scene* pScene) {
 	loadMaterials(asset);
 	createBuffers();
 	createDescriptorSets(asset);
+	createComputeDescriptorSets();
 	createGraphicsPipeline();
+	createComputePipeline();
 }
 
 void VulkanInterface::createTextureImages(const fastgltf::Asset& asset) {
@@ -359,34 +361,9 @@ void VulkanInterface::loadMeshes(const fastgltf::Asset& asset) {
 }
 
 void VulkanInterface::createDdgiProbes() {
-	for (int ddgiTextureIndex {0}; ddgiTextureIndex < 4; ++ddgiTextureIndex) {
-		createImage(
-			6144,
-			6144,
-			1,
-			vk::Format::eB10G11R11UfloatPack32,
-			vk::ImageTiling::eOptimal,
-			vk::ImageUsageFlagBits::eStorage,
-			m_ddgiIrradianceImages[ddgiTextureIndex],
-			m_ddgiIrradianceAllocations[ddgiTextureIndex]
-		);
-	}
-	for (int ddgiTextureIndex {0}; ddgiTextureIndex < 4; ++ddgiTextureIndex) {
-		createImage(
-			16384,
-			16384,
-			1,
-			vk::Format::eR16G16Sfloat,
-			vk::ImageTiling::eOptimal,
-			vk::ImageUsageFlagBits::eStorage,
-			m_ddgiDepthImages[ddgiTextureIndex],
-			m_ddgiDepthAllocations[ddgiTextureIndex]
-		);
-	}
 	const std::array<std::pair<int, int>, 3>& bounds {m_currentScene->getDdgiProbeBounds()};
 	m_ddgiProbePositions.reserve(
-		std::get<0>(DDGI_PROBE_DIMENSIONS) * std::get<1>(DDGI_PROBE_DIMENSIONS) *
-		std::get<2>(DDGI_PROBE_DIMENSIONS)
+		DDGI_PROBE_DIMENSIONS.x * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z
 	);
 	for (int x {bounds[0].first}; x <= bounds[0].second; ++x) {
 		for (int y {bounds[1].first}; y <= bounds[1].second; ++y) {
@@ -396,40 +373,50 @@ void VulkanInterface::createDdgiProbes() {
 			}
 		}
 	}
-	DrawIndirectCommand ddgiDrawCommand {
-		m_meshes[1].subMeshes[0].indexCount,
-		static_cast<uint32_t>(m_ddgiProbePositions.size()),
-		m_meshes[1].subMeshes[0].indexStart,
-		static_cast<int32_t>(m_meshes[1].subMeshes[0].vertexOffset),
-		0
-	};
-	SubMeshMetadataBufferObject ddgiMetaData {
-		m_meshes[1].subMeshes[0].materialIndex, SubMeshMetadataBufferObject::PROBE
-	};
 	for (int frameIndex {0}; frameIndex < MAX_FRAMES_IN_FLIGHT; ++frameIndex) {
+		for (int ddgiTextureIndex {0}; ddgiTextureIndex < 1; ++ddgiTextureIndex) {
+			createImage(
+				256 * 2,
+				256 * 2,
+				1,
+				vk::Format::eB10G11R11UfloatPack32,
+				vk::ImageTiling::eOptimal,
+				vk::ImageUsageFlagBits::eStorage,
+				m_ddgiIrradianceImages[frameIndex][ddgiTextureIndex],
+				m_ddgiIrradianceAllocations[frameIndex][ddgiTextureIndex]
+			);
+			m_ddgiIrradianceImageViews[frameIndex][ddgiTextureIndex] = std::move(createImageView(
+				m_ddgiIrradianceImages[frameIndex][ddgiTextureIndex],
+				vk::Format::eB10G11R11UfloatPack32,
+				vk::ImageAspectFlagBits::eColor,
+				1
+			));
+			createImage(
+				512 * 2,
+				512 * 2,
+				1,
+				vk::Format::eR16G16Sfloat,
+				vk::ImageTiling::eOptimal,
+				vk::ImageUsageFlagBits::eStorage,
+				m_ddgiDepthImages[frameIndex][ddgiTextureIndex],
+				m_ddgiDepthAllocations[frameIndex][ddgiTextureIndex]
+			);
+			m_ddgiDepthImageViews[frameIndex][ddgiTextureIndex] = createImageView(
+				m_ddgiDepthImages[frameIndex][ddgiTextureIndex],
+				vk::Format::eR16G16Sfloat,
+				vk::ImageAspectFlagBits::eColor,
+				1
+			);
+		}
 		createBuffer(
-			sizeof(ModelTransformBufferObject) * m_ddgiProbePositions.size(),
+			sizeof(glm::vec3) * m_ddgiProbePositions.size(),
 			vk::BufferUsageFlagBits::eStorageBuffer,
 			VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
 				VMA_ALLOCATION_CREATE_MAPPED_BIT,
-			m_ddgiTransformBuffers[frameIndex],
-			m_ddgiTransformAllocations[frameIndex]
+			m_ddgiProbePositionBuffer[frameIndex],
+			m_ddgiProbePositionAllocation[frameIndex]
 		);
 	}
-	createHostBufferWithData(
-		sizeof(ddgiDrawCommand),
-		vk::BufferUsageFlagBits::eIndirectBuffer,
-		&ddgiDrawCommand,
-		m_ddgiDrawCommandsBuffer,
-		m_ddgiDrawCommandsAllocation
-	);
-	createHostBufferWithData(
-		sizeof(ddgiMetaData),
-		vk::BufferUsageFlagBits::eStorageBuffer,
-		&ddgiMetaData,
-		m_ddgiMetadataBuffer,
-		m_ddgiMetadataAllocation
-	);
 }
 
 void VulkanInterface::createAccelerationStructures() {
@@ -766,6 +753,9 @@ void VulkanInterface::createBuffers() {
 	size_t lightsCount {m_currentScene->getLights().size()};
 	for (size_t frameInFlight {0}; frameInFlight < MAX_FRAMES_IN_FLIGHT; ++frameInFlight) {
 		vk::DeviceSize bufferSize {sizeof(ModelTransformBufferObject) * modelInstanceCount};
+		if (m_drawDdgiProbes) {
+			bufferSize += sizeof(ModelTransformBufferObject) * m_ddgiProbePositions.size();
+		}
 		createBuffer(
 			bufferSize,
 			vk::BufferUsageFlagBits::eStorageBuffer,
@@ -775,7 +765,7 @@ void VulkanInterface::createBuffers() {
 			m_modelTransformAllocations[frameInFlight]
 		);
 
-		bufferSize = sizeof(VPTransformBufferObject);
+		bufferSize = sizeof(DrawCallBufferObject);
 		createBuffer(
 			bufferSize,
 			vk::BufferUsageFlagBits::eUniformBuffer,
@@ -844,18 +834,22 @@ void VulkanInterface::createBuffers() {
 
 	for (int frameIndex {0}; frameIndex < MAX_FRAMES_IN_FLIGHT; ++frameIndex) {
 		createHostBufferWithData(
-			sizeof(drawCommands[0]) * drawCommands.size(),
+			sizeof(drawCommands[0]) * (drawCommands.size() + (m_drawDdgiProbes ? 1 : 0)),
 			vk::BufferUsageFlagBits::eIndirectBuffer,
 			drawCommands.data(),
 			m_drawCommandsBuffers[frameIndex],
-			m_drawCommandsAllocations[frameIndex]
+			m_drawCommandsAllocations[frameIndex],
+			0,
+			sizeof(drawCommands[0]) * drawCommands.size()
 		);
 		createHostBufferWithData(
-			sizeof(metaData[0]) * metaData.size(),
+			sizeof(metaData[0]) * (metaData.size() + (m_drawDdgiProbes ? 1 : 0)),
 			vk::BufferUsageFlagBits::eStorageBuffer,
 			metaData.data(),
 			m_metadataBuffers[frameIndex],
-			m_metadataAllocations[frameIndex]
+			m_metadataAllocations[frameIndex],
+			0,
+			sizeof(metaData[0]) * metaData.size()
 		);
 	}
 }
@@ -872,30 +866,19 @@ void VulkanInterface::createDescriptorSets(const fastgltf::Asset& asset) {
 	};
 	m_descriptorSets = m_device.allocateDescriptorSets(allocInfo);
 
-	m_ddgiDescriptorPool = {m_device, createDescriptorPool(textureCount)}; // ddgi stuff
-	m_ddgiDescriptorSetLayout = createDescriptorSetLayout(textureCount);
-	std::vector<vk::DescriptorSetLayout> ddgiLayouts {
-		MAX_FRAMES_IN_FLIGHT, m_ddgiDescriptorSetLayout
-	};
-	vk::DescriptorSetAllocateInfo ddgiAllocInfo {
-		.descriptorPool = m_ddgiDescriptorPool,
-		.descriptorSetCount = static_cast<uint32_t>(layouts.size()),
-		.pSetLayouts = ddgiLayouts.data()
-	};
-	m_ddgiDescriptorSets = m_device.allocateDescriptorSets(ddgiAllocInfo);
-
-	for (size_t frameInFlight {0}; frameInFlight < MAX_FRAMES_IN_FLIGHT; ++frameInFlight) {
+	for (size_t frameIndex {0}; frameIndex < MAX_FRAMES_IN_FLIGHT; ++frameIndex) {
 		vk::DescriptorBufferInfo modelTransformBufferInfo {
-			.buffer = m_modelTransformBuffers[frameInFlight],
+			.buffer = m_modelTransformBuffers[frameIndex],
 			.offset = 0,
 			.range = sizeof(ModelTransformBufferObject) *
-					 m_currentScene->getModelInstanceTransforms().size()
+					 (m_currentScene->getModelInstanceTransforms().size() +
+					  (m_drawDdgiProbes ? m_ddgiProbePositions.size() : 0))
 		};
 
 		vk::DescriptorBufferInfo vpTransformBufferInfo {
-			.buffer = m_vpTransformBuffers[frameInFlight],
+			.buffer = m_vpTransformBuffers[frameIndex],
 			.offset = 0,
-			.range = sizeof(VPTransformBufferObject)
+			.range = sizeof(DrawCallBufferObject)
 		};
 
 		vk::DescriptorBufferInfo materialBufferInfo {
@@ -915,7 +898,7 @@ void VulkanInterface::createDescriptorSets(const fastgltf::Asset& asset) {
 		}
 
 		vk::DescriptorBufferInfo lightBufferInfo {
-			m_lightBuffers[frameInFlight],
+			m_lightBuffers[frameIndex],
 			0,
 			sizeof(LightBufferObject) * m_currentScene->getLights().size()
 		};
@@ -934,69 +917,69 @@ void VulkanInterface::createDescriptorSets(const fastgltf::Asset& asset) {
 			m_tlasLutBuffer, 0, sizeof(tlasLutBufferObject) * m_tlasLutCount
 		};
 		vk::DescriptorBufferInfo metadataBufferInfo {
-			m_metadataBuffers[frameInFlight],
+			m_metadataBuffers[frameIndex],
 			0,
 			sizeof(SubMeshMetadataBufferObject) *
-				(m_opaqueDrawCallsCount + m_transparentDrawCallsCount)
+				(m_opaqueDrawCallsCount + m_transparentDrawCallsCount + (m_drawDdgiProbes ? 1 : 0))
 		};
 		std::array<vk::WriteDescriptorSet, 10> descriptorWrites {
-			{{.dstSet = m_descriptorSets[frameInFlight],
+			{{.dstSet = m_descriptorSets[frameIndex],
 			  .dstBinding = 0,
 			  .dstArrayElement = 0,
 			  .descriptorCount = 1,
 			  .descriptorType = vk::DescriptorType::eStorageBuffer,
 			  .pBufferInfo = &modelTransformBufferInfo},
-			 {.dstSet = m_descriptorSets[frameInFlight],
+			 {.dstSet = m_descriptorSets[frameIndex],
 			  .dstBinding = 1,
 			  .dstArrayElement = 0,
 			  .descriptorCount = 1,
 			  .descriptorType = vk::DescriptorType::eUniformBuffer,
 			  .pBufferInfo = &vpTransformBufferInfo},
-			 {.dstSet = m_descriptorSets[frameInFlight],
+			 {.dstSet = m_descriptorSets[frameIndex],
 			  .dstBinding = 2,
 			  .dstArrayElement = 0,
 			  .descriptorCount = 1,
 			  .descriptorType = vk::DescriptorType::eStorageBuffer,
 			  .pBufferInfo = &materialBufferInfo},
 			 {
-				 .dstSet = m_descriptorSets[frameInFlight],
+				 .dstSet = m_descriptorSets[frameIndex],
 				 .dstBinding = 3,
 				 .dstArrayElement = 0,
 				 .descriptorCount = static_cast<uint32_t>(textureCount),
 				 .descriptorType = vk::DescriptorType::eCombinedImageSampler,
 				 .pImageInfo = imageInfos.data(),
 			 },
-			 {.dstSet = m_descriptorSets[frameInFlight],
+			 {.dstSet = m_descriptorSets[frameIndex],
 			  .dstBinding = 4,
 			  .dstArrayElement = 0,
 			  .descriptorCount = 1,
 			  .descriptorType = vk::DescriptorType::eStorageBuffer,
 			  .pBufferInfo = &lightBufferInfo},
 			 {.pNext = &accelerationStructureInfo,
-			  .dstSet = m_descriptorSets[frameInFlight],
+			  .dstSet = m_descriptorSets[frameIndex],
 			  .dstBinding = 5,
 			  .dstArrayElement = 0,
 			  .descriptorCount = 1,
 			  .descriptorType = vk::DescriptorType::eAccelerationStructureKHR},
-			 {.dstSet = m_descriptorSets[frameInFlight],
+			 {.dstSet = m_descriptorSets[frameIndex],
 			  .dstBinding = 6,
 			  .dstArrayElement = 0,
 			  .descriptorCount = 1,
 			  .descriptorType = vk::DescriptorType::eStorageBuffer,
 			  .pBufferInfo = &vertexBufferInfo},
-			 {.dstSet = m_descriptorSets[frameInFlight],
+			 {.dstSet = m_descriptorSets[frameIndex],
 			  .dstBinding = 7,
 			  .dstArrayElement = 0,
 			  .descriptorCount = 1,
 			  .descriptorType = vk::DescriptorType::eStorageBuffer,
 			  .pBufferInfo = &indexBufferInfo},
-			 {.dstSet = m_descriptorSets[frameInFlight],
+			 {.dstSet = m_descriptorSets[frameIndex],
 			  .dstBinding = 8,
 			  .dstArrayElement = 0,
 			  .descriptorCount = 1,
 			  .descriptorType = vk::DescriptorType::eStorageBuffer,
 			  .pBufferInfo = &tlasLutBufferInfo},
-			 {.dstSet = m_descriptorSets[frameInFlight],
+			 {.dstSet = m_descriptorSets[frameIndex],
 			  .dstBinding = 9,
 			  .dstArrayElement = 0,
 			  .descriptorCount = 1,
@@ -1004,87 +987,52 @@ void VulkanInterface::createDescriptorSets(const fastgltf::Asset& asset) {
 			  .pBufferInfo = &metadataBufferInfo}}
 		};
 		m_device.updateDescriptorSets(descriptorWrites, {});
-
-		vk::DescriptorBufferInfo ddgiModelTransformBufferInfo {
-			.buffer = m_ddgiTransformBuffers[m_frameIndex],
+	}
+}
+void VulkanInterface::createComputeDescriptorSets() {
+	for (size_t frameIndex {0}; frameIndex < MAX_FRAMES_IN_FLIGHT; ++frameIndex) {
+		vk::WriteDescriptorSetAccelerationStructureKHR accelerationStructureInfo {
+			.accelerationStructureCount = 1, .pAccelerationStructures = &*m_tlas
+		};
+		vk::DescriptorBufferInfo ddgiPositionBufferInfo {
+			.buffer = m_ddgiProbePositionBuffer[frameIndex],
 			.offset = 0,
-			.range = sizeof(ModelTransformBufferObject) * m_ddgiProbePositions.size()
+			.range = sizeof(glm::vec3) * m_ddgiProbePositions.size()
 		};
-		vk::DescriptorBufferInfo ddgiMetadataBufferInfo {
-			.buffer = m_ddgiMetadataBuffer,
-			.offset = 0,
-			.range = sizeof(SubMeshMetadataBufferObject)
+		vk::DescriptorImageInfo ddgiIrradianceImageInfo {
+			.imageView = m_ddgiIrradianceImageViews[frameIndex][0],
+			.imageLayout = vk::ImageLayout::eGeneral
 		};
-		std::array<vk::WriteDescriptorSet, 10> ddgiDescriptorWrites {
-			{{.dstSet = m_ddgiDescriptorSets[frameInFlight],
-			  .dstBinding = 0,
-			  .dstArrayElement = 0,
-			  .descriptorCount = 1,
-			  .descriptorType = vk::DescriptorType::eStorageBuffer,
-			  .pBufferInfo = &ddgiModelTransformBufferInfo},
-			 {.dstSet = m_ddgiDescriptorSets[frameInFlight],
-			  .dstBinding = 1,
-			  .dstArrayElement = 0,
-			  .descriptorCount = 1,
-			  .descriptorType = vk::DescriptorType::eUniformBuffer,
-			  .pBufferInfo = &vpTransformBufferInfo},
-			 {.dstSet = m_ddgiDescriptorSets[frameInFlight],
-			  .dstBinding = 2,
-			  .dstArrayElement = 0,
-			  .descriptorCount = 1,
-			  .descriptorType = vk::DescriptorType::eStorageBuffer,
-			  .pBufferInfo = &materialBufferInfo},
-			 {
-				 .dstSet = m_ddgiDescriptorSets[frameInFlight],
-				 .dstBinding = 3,
-				 .dstArrayElement = 0,
-				 .descriptorCount = static_cast<uint32_t>(textureCount),
-				 .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-				 .pImageInfo = imageInfos.data(),
-			 },
-			 {.dstSet = m_ddgiDescriptorSets[frameInFlight],
-			  .dstBinding = 4,
-			  .dstArrayElement = 0,
-			  .descriptorCount = 1,
-			  .descriptorType = vk::DescriptorType::eStorageBuffer,
-			  .pBufferInfo = &lightBufferInfo},
-			 {.pNext = &accelerationStructureInfo,
-			  .dstSet = m_ddgiDescriptorSets[frameInFlight],
-			  .dstBinding = 5,
-			  .dstArrayElement = 0,
-			  .descriptorCount = 1,
-			  .descriptorType = vk::DescriptorType::eAccelerationStructureKHR},
-			 {.dstSet = m_ddgiDescriptorSets[frameInFlight],
-			  .dstBinding = 6,
-			  .dstArrayElement = 0,
-			  .descriptorCount = 1,
-			  .descriptorType = vk::DescriptorType::eStorageBuffer,
-			  .pBufferInfo = &vertexBufferInfo},
-			 {.dstSet = m_ddgiDescriptorSets[frameInFlight],
-			  .dstBinding = 7,
-			  .dstArrayElement = 0,
-			  .descriptorCount = 1,
-			  .descriptorType = vk::DescriptorType::eStorageBuffer,
-			  .pBufferInfo = &indexBufferInfo},
-			 {.dstSet = m_ddgiDescriptorSets[frameInFlight],
-			  .dstBinding = 8,
-			  .dstArrayElement = 0,
-			  .descriptorCount = 1,
-			  .descriptorType = vk::DescriptorType::eStorageBuffer,
-			  .pBufferInfo = &tlasLutBufferInfo},
-			 {.dstSet = m_ddgiDescriptorSets[frameInFlight],
-			  .dstBinding = 9,
-			  .dstArrayElement = 0,
-			  .descriptorCount = 1,
-			  .descriptorType = vk::DescriptorType::eStorageBuffer,
-			  .pBufferInfo = &ddgiMetadataBufferInfo}}
+		vk::DescriptorImageInfo ddgiDepthImageInfo {
+			.imageView = m_ddgiDepthImageViews[frameIndex][0],
+			.imageLayout = vk::ImageLayout::eGeneral
 		};
-		m_device.updateDescriptorSets(ddgiDescriptorWrites, {});
+		std::array<vk::WriteDescriptorSet, 3> descriptorWrites {
+			{{.dstSet = m_descriptorSets[frameIndex],
+			  .dstBinding = 10,
+			  .dstArrayElement = 0,
+			  .descriptorCount = 1,
+			  .descriptorType = vk::DescriptorType::eStorageBuffer,
+			  .pBufferInfo = &ddgiPositionBufferInfo},
+			 {.dstSet = m_descriptorSets[frameIndex],
+			  .dstBinding = 11,
+			  .dstArrayElement = 0,
+			  .descriptorCount = 1,
+			  .descriptorType = vk::DescriptorType::eStorageImage,
+			  .pImageInfo = &ddgiIrradianceImageInfo},
+			 {.dstSet = m_descriptorSets[frameIndex],
+			  .dstBinding = 12,
+			  .dstArrayElement = 0,
+			  .descriptorCount = 1,
+			  .descriptorType = vk::DescriptorType::eStorageImage,
+			  .pImageInfo = &ddgiDepthImageInfo}}
+		};
+		m_device.updateDescriptorSets(descriptorWrites, {});
 	}
 }
 
 void VulkanInterface::createGraphicsPipeline() {
-	vk::raii::ShaderModule shaderModule {createShaderModule(readFile(SHADER_PATH "/slang.spv"))};
+	vk::raii::ShaderModule shaderModule {createShaderModule(readFile(SHADER_PATH "/graphics.spv"))};
 
 	vk::PipelineShaderStageCreateInfo vertShaderStageInfo {
 		.stage = vk::ShaderStageFlagBits::eVertex, .module = shaderModule, .pName = "vertMain"
@@ -1092,7 +1040,9 @@ void VulkanInterface::createGraphicsPipeline() {
 	vk::PipelineShaderStageCreateInfo fragShaderStageInfo {
 		.stage = vk::ShaderStageFlagBits::eFragment, .module = shaderModule, .pName = "fragMain"
 	};
-	vk::PipelineShaderStageCreateInfo shaderStages[] {vertShaderStageInfo, fragShaderStageInfo};
+	std::array<vk::PipelineShaderStageCreateInfo, 2> shaderStages {
+		vertShaderStageInfo, fragShaderStageInfo
+	};
 
 	auto bindingDescription {Vertex::getBindingDescription()};
 	auto attributeDescriptions {Vertex::getAttributeDescriptions()};
@@ -1170,14 +1120,14 @@ void VulkanInterface::createGraphicsPipeline() {
 		.pPushConstantRanges = &pushConstantRange
 	};
 
-	m_pipelineLayout = {m_device, pipelineLayoutInfo};
+	m_graphicsPipelineLayout = {m_device, pipelineLayoutInfo};
 
 	vk::Format depthFormat {findDepthFormat()};
 
 	vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo>
 		pipelineCreateInfoChain {
 			{.stageCount = 2,
-			 .pStages = shaderStages,
+			 .pStages = shaderStages.data(),
 			 .pVertexInputState = &vertexInputInfo,
 			 .pInputAssemblyState = &inputAssembly,
 			 .pViewportState = &viewportState,
@@ -1186,7 +1136,7 @@ void VulkanInterface::createGraphicsPipeline() {
 			 .pDepthStencilState = &depthStencil,
 			 .pColorBlendState = &colorBlending,
 			 .pDynamicState = &dynamicState,
-			 .layout = m_pipelineLayout,
+			 .layout = m_graphicsPipelineLayout,
 			 .renderPass = nullptr},
 			{.colorAttachmentCount = 1,
 			 .pColorAttachmentFormats = &m_swapChainSurfaceFormat.format,
@@ -1195,4 +1145,19 @@ void VulkanInterface::createGraphicsPipeline() {
 	m_graphicsPipeline = {
 		m_device, nullptr, pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>()
 	};
+}
+void VulkanInterface::createComputePipeline() {
+	vk::raii::ShaderModule shaderModule {createShaderModule(readFile(SHADER_PATH "/compute.spv"))};
+
+	vk::PipelineShaderStageCreateInfo computeShaderStageInfo {
+		.stage = vk::ShaderStageFlagBits::eCompute, .module = shaderModule, .pName = "computeMain"
+	};
+	vk::PipelineLayoutCreateInfo pipelineLayoutInfo {
+		.setLayoutCount = 1, .pSetLayouts = &*m_descriptorSetLayout
+	};
+	m_computePipelineLayout = {m_device, pipelineLayoutInfo};
+	vk::ComputePipelineCreateInfo pipelineInfo {
+		.stage = computeShaderStageInfo, .layout = m_computePipelineLayout
+	};
+	m_computePipeline = vk::raii::Pipeline {m_device, nullptr, pipelineInfo};
 }

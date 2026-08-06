@@ -85,28 +85,31 @@ target_link_libraries (${PROJECT_NAME} Vulkan::cppm glfw glm::glm fastgltf KTX::
 
 find_program(SLANGC_EXECUTABLE slangc HINTS $ENV{VULKAN_SDK}/bin REQUIRED)
 # Slang shader
-function (add_slang_shader_target TARGET)
-  cmake_parse_arguments ("SHADER" "" "" "SOURCES" ${ARGN})
+function (compile_shaders TARGET)
+  cmake_parse_arguments ("SHADER" "" "OUTPUT" "SOURCES;ENTRY_POINTS" ${ARGN})
   set (SHADERS_DIR ${CMAKE_CURRENT_LIST_DIR}/shaders)
-  set (ENTRY_POINTS -entry vertMain -entry fragMain)
+  set (ENTRY_POINTS)
+  foreach(entry ${SHADER_ENTRY_POINTS})
+    list(APPEND ENTRY_POINTS -entry ${entry})
+  endforeach()
   add_custom_command (
           OUTPUT ${SHADERS_DIR}
           COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_DIR}
   )
   add_custom_command (
-          OUTPUT  ${SHADERS_DIR}/slang.spv
-          COMMAND ${SLANGC_EXECUTABLE} ${SHADER_SOURCES} -target spirv -profile spirv_1_4 -emit-spirv-directly -fvk-use-entrypoint-name -fvk-use-c-layout ${ENTRY_POINTS} -o slang.spv
+          OUTPUT  ${SHADER_OUTPUT}
+          COMMAND ${SLANGC_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/src/${SHADER_SOURCES} -target spirv -profile spirv_1_4 -emit-spirv-directly -fvk-use-entrypoint-name -fvk-use-c-layout ${ENTRY_POINTS} -o ${SHADER_OUTPUT}
           WORKING_DIRECTORY ${SHADERS_DIR}
-          DEPENDS ${SHADERS_DIR} ${SHADER_SOURCES}
+          DEPENDS ${SHADERS_DIR} src/${SHADER_SOURCES}
           COMMENT "Compiling Slang Shaders"
           VERBATIM
   )
-  add_custom_target (${TARGET} DEPENDS ${SHADERS_DIR}/slang.spv)
+  add_custom_target (${TARGET} DEPENDS ${SHADER_OUTPUT})
 endfunction()
 
-set(SHADER_SLANG_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/shader.slang)
-add_slang_shader_target(foo SOURCES ${SHADER_SLANG_SOURCES})
-add_dependencies(${PROJECT_NAME} foo)
+compile_shaders(graphics_shader OUTPUT graphics.spv SOURCES graphics.slang ENTRY_POINTS vertMain fragMain)
+compile_shaders(compute_shader OUTPUT compute.spv SOURCES compute.slang ENTRY_POINTS computeMain)
+add_dependencies(${PROJECT_NAME} graphics_shader compute_shader)
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE 
   SHADER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/shaders"
@@ -117,4 +120,3 @@ target_precompile_headers(${PROJECT_NAME} PRIVATE
     <vulkan/vulkan.hpp>
     <vulkan/vulkan_raii.hpp>
 )
-

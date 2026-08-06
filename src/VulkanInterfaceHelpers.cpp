@@ -164,14 +164,14 @@ void VulkanInterface::createBuffer(
 	}
 	buffer = bufferTemp;
 }
-
 void VulkanInterface::createGPUBufferWithData(
 	vk::DeviceSize bufferSize,
 	vk::BufferUsageFlags usageFlags,
 	const void* data,
 	vk::Buffer& buffer,
 	VmaAllocation& allocation,
-	vk::DeviceSize minAlignment
+	vk::DeviceSize minAlignment,
+	vk::DeviceSize dataSize
 ) const {
 	vk::Buffer stagingBuffer {nullptr};
 	VmaAllocation stagingAllocation {};
@@ -182,7 +182,9 @@ void VulkanInterface::createGPUBufferWithData(
 		stagingBuffer,
 		stagingAllocation
 	);
-	vmaCopyMemoryToAllocation(m_allocator, data, stagingAllocation, 0, bufferSize);
+	vmaCopyMemoryToAllocation(
+		m_allocator, data, stagingAllocation, 0, dataSize == 0 ? bufferSize : dataSize
+	);
 	createBuffer(
 		bufferSize,
 		usageFlags | vk::BufferUsageFlagBits::eTransferDst,
@@ -194,14 +196,14 @@ void VulkanInterface::createGPUBufferWithData(
 	copyBuffer(stagingBuffer, buffer, bufferSize);
 	vmaDestroyBuffer(m_allocator, stagingBuffer, stagingAllocation);
 }
-
 void VulkanInterface::createHostBufferWithData(
 	vk::DeviceSize bufferSize,
 	vk::BufferUsageFlags usageFlags,
 	const void* data,
 	vk::Buffer& buffer,
 	VmaAllocation& allocation,
-	vk::DeviceSize minAlignment
+	vk::DeviceSize minAlignment,
+	vk::DeviceSize dataSize
 ) const {
 	createBuffer(
 		bufferSize,
@@ -211,7 +213,9 @@ void VulkanInterface::createHostBufferWithData(
 		allocation,
 		minAlignment
 	);
-	vmaCopyMemoryToAllocation(m_allocator, data, allocation, 0, bufferSize);
+	vmaCopyMemoryToAllocation(
+		m_allocator, data, allocation, 0, dataSize == 0 ? bufferSize : dataSize
+	);
 }
 
 std::unique_ptr<vk::raii::CommandBuffer> VulkanInterface::beginSingleTimeCommands() const {
@@ -261,7 +265,7 @@ void VulkanInterface::copyBuffer(
 }
 
 vk::DescriptorPoolCreateInfo VulkanInterface::createDescriptorPool(uint32_t textureCount) const {
-	std::array<vk::DescriptorPoolSize, 10> poolSize {
+	std::array<vk::DescriptorPoolSize, 14> poolSize {
 		{{.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
@@ -273,7 +277,16 @@ vk::DescriptorPoolCreateInfo VulkanInterface::createDescriptorPool(uint32_t text
 		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
-		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT}}
+		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eAccelerationStructureKHR,
+		  .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eStorageImage,
+		  .descriptorCount =
+			  static_cast<uint32_t>(m_ddgiIrradianceImages.size() * MAX_FRAMES_IN_FLIGHT)},
+		 {.type = vk::DescriptorType::eStorageImage,
+		  .descriptorCount =
+			  static_cast<uint32_t>(m_ddgiDepthImages.size() * MAX_FRAMES_IN_FLIGHT)}}
 	};
 	vk::DescriptorPoolCreateInfo poolInfo {
 		.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
@@ -285,7 +298,7 @@ vk::DescriptorPoolCreateInfo VulkanInterface::createDescriptorPool(uint32_t text
 }
 vk::raii::DescriptorSetLayout
 VulkanInterface::createDescriptorSetLayout(uint32_t textureCount) const {
-	std::array<vk::DescriptorSetLayoutBinding, 10> bindings {
+	std::array<vk::DescriptorSetLayoutBinding, 13> bindings {
 		{{0, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr},
 		 {.binding = 1,
 		  .descriptorType = vk::DescriptorType::eUniformBuffer,
@@ -331,6 +344,21 @@ VulkanInterface::createDescriptorSetLayout(uint32_t textureCount) const {
 		  .descriptorType = vk::DescriptorType::eStorageBuffer,
 		  .descriptorCount = 1,
 		  .stageFlags = vk::ShaderStageFlagBits::eVertex,
+		  .pImmutableSamplers = nullptr},
+		 {.binding = 10,
+		  .descriptorType = vk::DescriptorType::eStorageBuffer,
+		  .descriptorCount = 1,
+		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
+		  .pImmutableSamplers = nullptr},
+		 {.binding = 11,
+		  .descriptorType = vk::DescriptorType::eStorageImage,
+		  .descriptorCount = 1,
+		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
+		  .pImmutableSamplers = nullptr},
+		 {.binding = 12,
+		  .descriptorType = vk::DescriptorType::eStorageImage,
+		  .descriptorCount = 1,
+		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
 		  .pImmutableSamplers = nullptr}}
 	};
 	vk::DescriptorSetLayoutCreateInfo layoutInfo {
@@ -338,6 +366,34 @@ VulkanInterface::createDescriptorSetLayout(uint32_t textureCount) const {
 	};
 	return {m_device, layoutInfo};
 }
+vk::raii::DescriptorSetLayout VulkanInterface::createComputeDescriptorSetLayout() const {
+	std::array<vk::DescriptorSetLayoutBinding, 4> bindings {
+		{{.binding = 0,
+		  .descriptorType = vk::DescriptorType::eAccelerationStructureKHR,
+		  .descriptorCount = 1,
+		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
+		  .pImmutableSamplers = nullptr},
+		 {.binding = 1,
+		  .descriptorType = vk::DescriptorType::eStorageBuffer,
+		  .descriptorCount = 1,
+		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
+		  .pImmutableSamplers = nullptr},
+		 {.binding = 2,
+		  .descriptorType = vk::DescriptorType::eStorageImage,
+		  .descriptorCount = 1,
+		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
+		  .pImmutableSamplers = nullptr},
+		 {.binding = 3,
+		  .descriptorType = vk::DescriptorType::eStorageImage,
+		  .descriptorCount = 1,
+		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
+		  .pImmutableSamplers = nullptr}}
+	};
+	vk::DescriptorSetLayoutCreateInfo layoutInfo {
+		.bindingCount = static_cast<uint32_t>(bindings.size()), .pBindings = bindings.data()
+	};
+	return {m_device, layoutInfo};
+};
 
 std::vector<char> VulkanInterface::readFile(const std::string& filename) {
 	std::ifstream file {filename, std::ios::ate | std::ios::binary};
@@ -436,7 +492,7 @@ void VulkanInterface::transition_image_layout(
 	m_commandBuffers[m_frameIndex].pipelineBarrier2(dependency_info);
 }
 void VulkanInterface::updateBuffers() {
-	VPTransformBufferObject vpTransform {
+	DrawCallBufferObject vpTransform {
 		m_currentScene->getCameraPosition(),
 		lookAt(
 			m_currentScene->getCameraPosition(),
@@ -475,6 +531,22 @@ void VulkanInterface::updateBuffers() {
 		0,
 		sizeof(ModelTransformBufferObject) * modelTransforms.size()
 	);
+	if (m_drawDdgiProbes) {
+		std::vector<ModelTransformBufferObject> ddgiProbeTransformations {};
+		ddgiProbeTransformations.reserve(m_ddgiProbePositions.size());
+		for (const auto& position: m_ddgiProbePositions) {
+			ddgiProbeTransformations.emplace_back(
+				glm::translate(position) * glm::scale(glm::vec3 {0.1, 0.1, 0.1})
+			);
+		}
+		vmaCopyMemoryToAllocation(
+			m_allocator,
+			ddgiProbeTransformations.data(),
+			m_modelTransformAllocations[m_frameIndex],
+			sizeof(ModelTransformBufferObject) * modelTransforms.size(),
+			sizeof(ModelTransformBufferObject) * m_ddgiProbePositions.size()
+		);
+	}
 	if (m_currentScene->handleCameraMovement(DDGI_PROBE_DIMENSIONS)) {
 		restructureDdgiProbes();
 		std::vector<DrawIndirectCommand> drawCommands {};
@@ -511,20 +583,35 @@ void VulkanInterface::updateBuffers() {
 			sizeof(SubMeshMetadataBufferObject) * m_opaqueDrawCallsCount,
 			sizeof(metaData[0]) * metaData.size()
 		);
-		std::vector<ModelTransformBufferObject> ddgiTransforms {};
-		ddgiTransforms.reserve(m_ddgiProbePositions.size());
-		for (const auto& position: m_ddgiProbePositions) {
-			ddgiTransforms.emplace_back(
-				glm::translate(position) * glm::scale(glm::vec3 {0.05, 0.05, 0.05})
+
+		DrawIndirectCommand probeDrawCommand {
+			m_meshes[1].subMeshes[0].indexCount,
+			static_cast<uint32_t>(m_ddgiProbePositions.size()),
+			m_meshes[1].subMeshes[0].indexStart,
+			static_cast<int32_t>(m_meshes[1].subMeshes[0].vertexOffset),
+			static_cast<uint32_t>(m_currentScene->getModelInstanceTransforms().size())
+		};
+		SubMeshMetadataBufferObject probeMetaData {
+			m_meshes[1].subMeshes[0].materialIndex, SubMeshMetadataBufferObject::PROBE
+		};
+		if (m_drawDdgiProbes) {
+			vmaCopyMemoryToAllocation(
+				m_allocator,
+				&probeDrawCommand,
+				m_drawCommandsAllocations[m_frameIndex],
+				sizeof(DrawIndirectCommand) *
+					(m_opaqueDrawCallsCount + m_transparentDrawCallsCount),
+				sizeof(DrawIndirectCommand)
+			);
+			vmaCopyMemoryToAllocation(
+				m_allocator,
+				&probeMetaData,
+				m_metadataAllocations[m_frameIndex],
+				sizeof(SubMeshMetadataBufferObject) *
+					(m_opaqueDrawCallsCount + m_transparentDrawCallsCount),
+				sizeof(SubMeshMetadataBufferObject)
 			);
 		}
-		vmaCopyMemoryToAllocation(
-			m_allocator,
-			ddgiTransforms.data(),
-			m_ddgiTransformAllocations[m_frameIndex],
-			0,
-			sizeof(ddgiTransforms[0]) * ddgiTransforms.size()
-		);
 	}
 }
 void VulkanInterface::updateTlas() {
@@ -659,18 +746,18 @@ void VulkanInterface::restructureDdgiProbes() {
 }
 size_t VulkanInterface::probeCoordinatesToIndex(int x, int y, int z) const {
 	const glm::vec3& cameraPosition {m_currentScene->getCameraPosition()};
-	int newX {(x + std::get<0>(DDGI_PROBE_DIMENSIONS) / 2) % std::get<0>(DDGI_PROBE_DIMENSIONS)};
+	int newX {(x + DDGI_PROBE_DIMENSIONS.x / 2) % DDGI_PROBE_DIMENSIONS.x};
 	if (newX < 0) {
-		newX += std::get<0>(DDGI_PROBE_DIMENSIONS);
+		newX += DDGI_PROBE_DIMENSIONS.x;
 	}
-	int newY {(y + std::get<1>(DDGI_PROBE_DIMENSIONS) / 2) % std::get<1>(DDGI_PROBE_DIMENSIONS)};
+	int newY {(y + DDGI_PROBE_DIMENSIONS.y / 2) % DDGI_PROBE_DIMENSIONS.y};
 	if (newY < 0) {
-		newY += std::get<1>(DDGI_PROBE_DIMENSIONS);
+		newY += DDGI_PROBE_DIMENSIONS.y;
 	}
-	int newZ {(z + std::get<2>(DDGI_PROBE_DIMENSIONS) / 2) % std::get<2>(DDGI_PROBE_DIMENSIONS)};
+	int newZ {(z + DDGI_PROBE_DIMENSIONS.z / 2) % DDGI_PROBE_DIMENSIONS.z};
 	if (newZ < 0) {
-		newZ += std::get<2>(DDGI_PROBE_DIMENSIONS);
+		newZ += DDGI_PROBE_DIMENSIONS.z;
 	}
-	return newX * std::get<1>(DDGI_PROBE_DIMENSIONS) * std::get<2>(DDGI_PROBE_DIMENSIONS) +
-		   newY * std::get<2>(DDGI_PROBE_DIMENSIONS) + newZ;
+	return newX * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z +
+		   newY * DDGI_PROBE_DIMENSIONS.z + newZ;
 }

@@ -99,17 +99,17 @@ class Scene {
 
 		const glm::vec3& cameraPos {m_sceneCamera.getCameraPosition()};
 		m_ddgiProbeBounds[0].first = static_cast<int>(std::floor(cameraPos.x)) -
-									 std::get<0>(renderer.DDGI_PROBE_DIMENSIONS) / 2 + 1;
+									 renderer.DDGI_PROBE_DIMENSIONS.x / 2 + 1;
 		m_ddgiProbeBounds[0].second = static_cast<int>(std::floor(cameraPos.x)) +
-									  std::get<0>(renderer.DDGI_PROBE_DIMENSIONS) / 2;
+									  renderer.DDGI_PROBE_DIMENSIONS.x / 2;
 		m_ddgiProbeBounds[1].first = static_cast<int>(std::floor(cameraPos.y)) -
-									 std::get<1>(renderer.DDGI_PROBE_DIMENSIONS) / 2 + 1;
+									 renderer.DDGI_PROBE_DIMENSIONS.y / 2 + 1;
 		m_ddgiProbeBounds[1].second = static_cast<int>(std::floor(cameraPos.y)) +
-									  std::get<1>(renderer.DDGI_PROBE_DIMENSIONS) / 2;
+									  renderer.DDGI_PROBE_DIMENSIONS.y / 2;
 		m_ddgiProbeBounds[2].first = static_cast<int>(std::floor(cameraPos.z)) -
-									 std::get<2>(renderer.DDGI_PROBE_DIMENSIONS) / 2 + 1;
+									 renderer.DDGI_PROBE_DIMENSIONS.z / 2 + 1;
 		m_ddgiProbeBounds[2].second = static_cast<int>(std::floor(cameraPos.z)) +
-									  std::get<2>(renderer.DDGI_PROBE_DIMENSIONS) / 2;
+									  renderer.DDGI_PROBE_DIMENSIONS.z / 2;
 
 		renderer.loadScene(asset.get(), this); // load textures and models onto GPU memory
 	}
@@ -191,7 +191,7 @@ class Scene {
 		}
 	}
 
-	bool handleCameraMovement(const std::tuple<int, int, int>& ddgiDimensions) {
+	bool handleCameraMovement(const glm::ivec3& ddgiDimensions) {
 		if (m_cameraMoved) {
 			std::ranges::sort(
 				m_transparentModelInstances,
@@ -216,17 +216,17 @@ class Scene {
 
 			const glm::vec3& cameraPos {m_sceneCamera.getCameraPosition()};
 			m_ddgiProbeBounds[0].first =
-				static_cast<int>(std::floor(cameraPos.x)) - std::get<0>(ddgiDimensions) / 2 + 1;
+				static_cast<int>(std::floor(cameraPos.x)) - ddgiDimensions.x / 2 + 1;
 			m_ddgiProbeBounds[0].second =
-				static_cast<int>(std::floor(cameraPos.x)) + std::get<0>(ddgiDimensions) / 2;
+				static_cast<int>(std::floor(cameraPos.x)) + ddgiDimensions.x / 2;
 			m_ddgiProbeBounds[1].first =
-				static_cast<int>(std::floor(cameraPos.y)) - std::get<1>(ddgiDimensions) / 2 + 1;
+				static_cast<int>(std::floor(cameraPos.y)) - ddgiDimensions.y / 2 + 1;
 			m_ddgiProbeBounds[1].second =
-				static_cast<int>(std::floor(cameraPos.y)) + std::get<1>(ddgiDimensions) / 2;
+				static_cast<int>(std::floor(cameraPos.y)) + ddgiDimensions.y / 2;
 			m_ddgiProbeBounds[2].first =
-				static_cast<int>(std::floor(cameraPos.z)) - std::get<2>(ddgiDimensions) / 2 + 1;
+				static_cast<int>(std::floor(cameraPos.z)) - ddgiDimensions.z / 2 + 1;
 			m_ddgiProbeBounds[2].second =
-				static_cast<int>(std::floor(cameraPos.z)) + std::get<2>(ddgiDimensions) / 2;
+				static_cast<int>(std::floor(cameraPos.z)) + ddgiDimensions.z / 2;
 
 			m_cameraMoved = false;
 			return true;

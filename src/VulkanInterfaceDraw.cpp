@@ -1,5 +1,3 @@
-#include <print>
-
 #ifndef GLM_ENABLE_EXPERIMENTAL
 #define GLM_ENABLE_EXPERIMENTAL
 #endif
@@ -89,14 +87,26 @@ void VulkanInterface::drawFrame() {
 	};
 
 	commandBuffer.beginRendering(renderingInfo);
-	commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *m_graphicsPipeline);
 	commandBuffer.bindDescriptorSets(
 		vk::PipelineBindPoint::eGraphics,
-		m_pipelineLayout,
+		m_graphicsPipelineLayout,
 		0,
 		*m_descriptorSets[m_frameIndex],
 		nullptr
 	);
+	commandBuffer.bindPipeline(vk::PipelineBindPoint::eCompute, m_computePipeline); // compute
+	commandBuffer.dispatch(DDGI_PROBE_DIMENSIONS.x, DDGI_PROBE_DIMENSIONS.y, DDGI_PROBE_DIMENSIONS.z);
+
+	vk::MemoryBarrier2 memoryBarrier {
+		.srcStageMask = vk::PipelineStageFlagBits2::eComputeShader,
+		.srcAccessMask = vk::AccessFlagBits2::eShaderWrite,
+		.dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader,
+		.dstAccessMask = vk::AccessFlagBits2::eShaderRead
+	};
+	vk::DependencyInfo dependencyInfo {.memoryBarrierCount = 1, .pMemoryBarriers = &memoryBarrier};
+	commandBuffer.pipelineBarrier2(dependencyInfo);
+
+	commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, m_graphicsPipeline); // graphics
 	commandBuffer.setViewport(
 		0,
 		vk::Viewport(
@@ -115,22 +125,9 @@ void VulkanInterface::drawFrame() {
 	commandBuffer.drawIndexedIndirect(
 		m_drawCommandsBuffers[m_frameIndex],
 		0,
-		m_opaqueDrawCallsCount + m_transparentDrawCallsCount,
+		m_opaqueDrawCallsCount + m_transparentDrawCallsCount + (m_drawDdgiProbes ? 1 : 0),
 		sizeof(DrawIndirectCommand)
 	);
-
-	commandBuffer.bindDescriptorSets(
-		vk::PipelineBindPoint::eGraphics,
-		m_pipelineLayout,
-		0,
-		*m_ddgiDescriptorSets[m_frameIndex],
-		nullptr
-	);
-	commandBuffer.drawIndexedIndirect(m_ddgiDrawCommandsBuffer, 0, 1, sizeof(DrawIndirectCommand));
-	const std::array<std::pair<int, int>, 3>& bounds {m_currentScene->getDdgiProbeBounds()};
-	if (m_currentScene->withinBounds(0, 0, 0)) {
-		std::println("{}", probeCoordinatesToIndex(0, 0, 0));
-	}
 
 	commandBuffer.endRendering();
 	transition_image_layout(

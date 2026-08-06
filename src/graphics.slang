@@ -1,12 +1,5 @@
-struct VSInput {
-    float3 position : POSITION;
-	float3 normal : NORMAL;
-	float4 color : COLOR;
-	float2 UV : TEXCOORD0;
-	float4 tangent : TANGENT;
-};
+import bindings;
 
-enum MeshType {NORMAL, PROBE};
 struct VSOutput
 {
 	float4 position : SV_Position;
@@ -19,73 +12,6 @@ struct VSOutput
 	uint instanceID;
 	MeshType meshType;
 };
-
-struct ModelTransformBuffer {
-    float4x4 model;
-	float3x3 normal;
-};
-
-struct VPTransformBuffer {
-	float3 cameraPosition;
-    float4x4 view;
-	float4x4 projection;
-	int lightCount;
-} // TODO: better name
-
-struct LightBuffer {
-	enum LightType { directional, spot, point };
-	LightType type;
-	float3 color;
-	float intensity;
-	float range;
-
-	float3 position;
-	float3 direction;
-};
-
-struct MaterialBuffer {
-    uint baseColorTextureIndex;
-	float4 baseColorFactor;
-
-	uint metallicRoughnessTextureIndex;
-	float2 metallicRoughnessFactor;
-
-	uint normalTextureIndex;
-	float normalScale;
-
-	uint occlusionTextureIndex;
-	float occlusionStrength;
-
-	uint emissiveTextureIndex;
-	float3 emissiveFactor;
-
-	enum AlphaMode { OPAQUE, MASK, BLEND };
-	AlphaMode alphaMode;
-	float alphaCutoff;
-};
-
-struct tlasLUTBuffer {
-	uint materialIndex;
-	uint indexStart;
-	uint vertexOffset;
-};
-
-struct Metadata { 
-    uint materialIndex;
-	MeshType type;
-};
-
-[[vk::binding(0, 0)]] StructuredBuffer<ModelTransformBuffer> modelTransform;
-[[vk::binding(1, 0)]] ConstantBuffer<VPTransformBuffer> vpTransform;
-[[vk::binding(2, 0)]] StructuredBuffer<MaterialBuffer> materials;
-[[vk::binding(3, 0)]] Sampler2D textures[];
-[[vk::binding(4, 0)]] StructuredBuffer<LightBuffer> lights;
-[[vk::binding(5, 0)]] RaytracingAccelerationStructure accelerationStructure;
-[[vk::binding(6, 0)]] StructuredBuffer<VSInput> vertices;
-[[vk::binding(7, 0)]] StructuredBuffer<uint32_t> indices;
-[[vk::binding(8, 0)]] StructuredBuffer<tlasLUTBuffer> tlasLut;
-[[vk::binding(9, 0)]] StructuredBuffer<Metadata> metadata;
-
 
 static const float PI = 3.14159265359;
 static const uint32_t UINT32_MAX = 4294967295;
@@ -242,7 +168,7 @@ float4 fragMain(VSOutput input) : SV_TARGET {
 	}
 	if (currMaterial.alphaMode == MaterialBuffer::AlphaMode::MASK && baseColor.a < currMaterial.alphaCutoff) {discard;}
 	if (input.meshType == MeshType::PROBE) {
-		return float4(baseColor.rgb * (input.instanceID % 256) / 255, 1);
+		return baseColor;
 	}
 
 	float metallic = currMaterial.metallicRoughnessFactor.r;

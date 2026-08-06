@@ -51,8 +51,8 @@ void VulkanInterface::initVulkan() {
 	createSwapChain();
 	createSwapChainImageViews();
 	createCommandPool();
-	createDepthResources();
 	createCommandBuffers();
+	createDepthResources();
 	createSyncObjects();
 }
 
@@ -141,6 +141,7 @@ void VulkanInterface::createLogicalDevice() {
 		uint32_t queueFamilyIndex = 0; queueFamilyIndex < queueFamilies.size(); ++queueFamilyIndex
 	) {
 		if ((queueFamilies[queueFamilyIndex].queueFlags & vk::QueueFlagBits::eGraphics) and
+			(queueFamilies[queueFamilyIndex].queueFlags & vk::QueueFlagBits::eCompute) and
 			m_physicalDevice.getSurfaceSupportKHR(queueFamilyIndex, *m_surface)) {
 			m_queueFamilyIndex = queueFamilyIndex;
 			break;
@@ -269,6 +270,17 @@ void VulkanInterface::createCommandPool() {
 	m_commandPool = {m_device, poolInfo};
 }
 
+void VulkanInterface::createCommandBuffers() {
+	m_commandBuffers.clear();
+	vk::CommandBufferAllocateInfo allocInfo {
+		.commandPool = m_commandPool,
+		.level = vk::CommandBufferLevel::ePrimary,
+		.commandBufferCount = MAX_FRAMES_IN_FLIGHT
+	};
+	m_commandBuffers = vk::raii::CommandBuffers {m_device, allocInfo};
+	m_computeCommandBuffers = vk::raii::CommandBuffers {m_device, allocInfo};
+}
+
 void VulkanInterface::createDepthResources() {
 	vk::Format depthFormat {findDepthFormat()};
 
@@ -286,21 +298,10 @@ void VulkanInterface::createDepthResources() {
 		createImageView(m_depthImage, depthFormat, vk::ImageAspectFlagBits::eDepth, 1);
 }
 
-void VulkanInterface::createCommandBuffers() {
-	m_commandBuffers.clear();
-	vk::CommandBufferAllocateInfo allocInfo {
-		.commandPool = m_commandPool,
-		.level = vk::CommandBufferLevel::ePrimary,
-		.commandBufferCount = MAX_FRAMES_IN_FLIGHT
-	};
-	m_commandBuffers = vk::raii::CommandBuffers {m_device, allocInfo};
-}
-
 void VulkanInterface::createSyncObjects() {
-	assert(
-		m_presentCompleteSemaphores.empty() and m_renderFinishedSemaphores.empty() and
-		m_inFlightFences.empty()
-	);
+	m_presentCompleteSemaphores.clear();
+	m_renderFinishedSemaphores.clear();
+	m_inFlightFences.clear();
 	for (size_t i {0}; i < m_swapChainImages.size(); ++i) {
 		m_renderFinishedSemaphores.emplace_back(m_device, vk::SemaphoreCreateInfo());
 	}
