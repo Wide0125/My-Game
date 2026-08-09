@@ -21,6 +21,15 @@
 #include "Node.hpp"
 #include "VulkanInterface.hpp"
 
+struct DDGIProbeBounds {
+	int xLower {};
+	int xUpper {};
+	int yLower {};
+	int yUpper {};
+	int zLower {};
+	int zUpper {};
+};
+
 class Scene {
   public:
 	Scene(const std::string& filename, VulkanInterface& renderer) {
@@ -98,18 +107,18 @@ class Scene {
 		}
 
 		const glm::vec3& cameraPos {m_sceneCamera.getCameraPosition()};
-		m_ddgiProbeBounds[0].first = static_cast<int>(std::floor(cameraPos.x)) -
-									 renderer.DDGI_PROBE_DIMENSIONS.x / 2 + 1;
-		m_ddgiProbeBounds[0].second = static_cast<int>(std::floor(cameraPos.x)) +
-									  renderer.DDGI_PROBE_DIMENSIONS.x / 2;
-		m_ddgiProbeBounds[1].first = static_cast<int>(std::floor(cameraPos.y)) -
-									 renderer.DDGI_PROBE_DIMENSIONS.y / 2 + 1;
-		m_ddgiProbeBounds[1].second = static_cast<int>(std::floor(cameraPos.y)) +
-									  renderer.DDGI_PROBE_DIMENSIONS.y / 2;
-		m_ddgiProbeBounds[2].first = static_cast<int>(std::floor(cameraPos.z)) -
-									 renderer.DDGI_PROBE_DIMENSIONS.z / 2 + 1;
-		m_ddgiProbeBounds[2].second = static_cast<int>(std::floor(cameraPos.z)) +
-									  renderer.DDGI_PROBE_DIMENSIONS.z / 2;
+		m_ddgiProbeBounds.xLower =
+			static_cast<int>(std::floor(cameraPos.x)) - renderer.DDGI_PROBE_DIMENSIONS.x / 2 + 1;
+		m_ddgiProbeBounds.xUpper =
+			static_cast<int>(std::floor(cameraPos.x)) + renderer.DDGI_PROBE_DIMENSIONS.x / 2;
+		m_ddgiProbeBounds.yLower =
+			static_cast<int>(std::floor(cameraPos.y)) - renderer.DDGI_PROBE_DIMENSIONS.y / 2 + 1;
+		m_ddgiProbeBounds.yUpper =
+			static_cast<int>(std::floor(cameraPos.y)) + renderer.DDGI_PROBE_DIMENSIONS.y / 2;
+		m_ddgiProbeBounds.zLower =
+			static_cast<int>(std::floor(cameraPos.z)) - renderer.DDGI_PROBE_DIMENSIONS.z / 2 + 1;
+		m_ddgiProbeBounds.zUpper =
+			static_cast<int>(std::floor(cameraPos.z)) + renderer.DDGI_PROBE_DIMENSIONS.z / 2;
 
 		renderer.loadScene(asset.get(), this); // load textures and models onto GPU memory
 	}
@@ -215,17 +224,17 @@ class Scene {
 			);
 
 			const glm::vec3& cameraPos {m_sceneCamera.getCameraPosition()};
-			m_ddgiProbeBounds[0].first =
+			m_ddgiProbeBounds.xLower =
 				static_cast<int>(std::floor(cameraPos.x)) - ddgiDimensions.x / 2 + 1;
-			m_ddgiProbeBounds[0].second =
+			m_ddgiProbeBounds.xUpper =
 				static_cast<int>(std::floor(cameraPos.x)) + ddgiDimensions.x / 2;
-			m_ddgiProbeBounds[1].first =
+			m_ddgiProbeBounds.yLower =
 				static_cast<int>(std::floor(cameraPos.y)) - ddgiDimensions.y / 2 + 1;
-			m_ddgiProbeBounds[1].second =
+			m_ddgiProbeBounds.yUpper =
 				static_cast<int>(std::floor(cameraPos.y)) + ddgiDimensions.y / 2;
-			m_ddgiProbeBounds[2].first =
+			m_ddgiProbeBounds.zLower =
 				static_cast<int>(std::floor(cameraPos.z)) - ddgiDimensions.z / 2 + 1;
-			m_ddgiProbeBounds[2].second =
+			m_ddgiProbeBounds.zUpper =
 				static_cast<int>(std::floor(cameraPos.z)) + ddgiDimensions.z / 2;
 
 			m_cameraMoved = false;
@@ -233,14 +242,11 @@ class Scene {
 		}
 		return false;
 	}
-	const std::array<std::pair<int, int>, 3>& getDdgiProbeBounds() { return m_ddgiProbeBounds; }
+	const DDGIProbeBounds& getDdgiProbeBounds() { return m_ddgiProbeBounds; }
 	bool withinBounds(int x, int y, int z) {
-		return x >= std::get<0>(m_ddgiProbeBounds).first and
-			   x <= std::get<0>(m_ddgiProbeBounds).second and
-			   y >= std::get<1>(m_ddgiProbeBounds).first and
-			   y <= std::get<1>(m_ddgiProbeBounds).second and
-			   z >= std::get<2>(m_ddgiProbeBounds).first and
-			   z <= std::get<2>(m_ddgiProbeBounds).second;
+		return x >= m_ddgiProbeBounds.xLower and x <= m_ddgiProbeBounds.xUpper and
+			   y >= m_ddgiProbeBounds.yLower and y <= m_ddgiProbeBounds.yUpper and
+			   z >= m_ddgiProbeBounds.zLower and z <= m_ddgiProbeBounds.zUpper;
 	}
 
   private:
@@ -260,7 +266,7 @@ class Scene {
 	Camera m_sceneCamera {};
 	bool m_cameraMoved {false};
 
-	std::array<std::pair<int, int>, 3> m_ddgiProbeBounds {}; // x{lower, upper}, y, z
+	DDGIProbeBounds m_ddgiProbeBounds {};
 
 	std::vector<std::vector<size_t>> getNodes(const fastgltf::Asset& asset) {
 		std::vector<std::vector<size_t>> flattenQueue {};

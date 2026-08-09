@@ -86,16 +86,22 @@ void VulkanInterface::drawFrame() {
 		.pDepthAttachment = &depthAttachmentInfo
 	};
 
-	commandBuffer.beginRendering(renderingInfo);
 	commandBuffer.bindDescriptorSets(
-		vk::PipelineBindPoint::eGraphics,
-		m_graphicsPipelineLayout,
+		vk::PipelineBindPoint::eCompute,
+		m_computeRaySamplePipelineLayout,
 		0,
 		*m_descriptorSets[m_frameIndex],
 		nullptr
 	);
-	commandBuffer.bindPipeline(vk::PipelineBindPoint::eCompute, m_computePipeline); // compute
-	commandBuffer.dispatch(DDGI_PROBE_DIMENSIONS.x, DDGI_PROBE_DIMENSIONS.y, DDGI_PROBE_DIMENSIONS.z);
+	commandBuffer.bindPipeline(
+		vk::PipelineBindPoint::eCompute, m_computeRaySamplePipeline
+	); // compute
+	commandBuffer.dispatch(
+		DDGI_PROBE_DIMENSIONS.x, DDGI_PROBE_DIMENSIONS.y, DDGI_PROBE_DIMENSIONS.z
+	);
+	commandBuffer.clearColorImage(
+		m_ddgiDepthImages[m_frameIndex], vk::ImageLayout::eGeneral, clearColor.color, {}
+	);
 
 	vk::MemoryBarrier2 memoryBarrier {
 		.srcStageMask = vk::PipelineStageFlagBits2::eComputeShader,
@@ -106,6 +112,14 @@ void VulkanInterface::drawFrame() {
 	vk::DependencyInfo dependencyInfo {.memoryBarrierCount = 1, .pMemoryBarriers = &memoryBarrier};
 	commandBuffer.pipelineBarrier2(dependencyInfo);
 
+	commandBuffer.beginRendering(renderingInfo);
+	commandBuffer.bindDescriptorSets(
+		vk::PipelineBindPoint::eGraphics,
+		m_graphicsPipelineLayout,
+		0,
+		*m_descriptorSets[m_frameIndex],
+		nullptr
+	);
 	commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, m_graphicsPipeline); // graphics
 	commandBuffer.setViewport(
 		0,

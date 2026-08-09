@@ -1,9 +1,10 @@
 #include <fstream>
-#include <print>
 
 #include "VulkanInterface.hpp"
 
 #include "Scene.hpp"
+
+#include "PRNG.h"
 
 // initVulkan helper functions
 bool VulkanInterface::isDeviceSuitable(const vk::raii::PhysicalDevice& physicalDevice) const {
@@ -265,7 +266,7 @@ void VulkanInterface::copyBuffer(
 }
 
 vk::DescriptorPoolCreateInfo VulkanInterface::createDescriptorPool(uint32_t textureCount) const {
-	std::array<vk::DescriptorPoolSize, 14> poolSize {
+	std::array<vk::DescriptorPoolSize, 19> poolSize {
 		{{.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
@@ -278,15 +279,17 @@ vk::DescriptorPoolCreateInfo VulkanInterface::createDescriptorPool(uint32_t text
 		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
-		 {.type = vk::DescriptorType::eAccelerationStructureKHR,
-		  .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
-		 {.type = vk::DescriptorType::eStorageImage,
-		  .descriptorCount =
-			  static_cast<uint32_t>(m_ddgiIrradianceImages.size() * MAX_FRAMES_IN_FLIGHT)},
-		 {.type = vk::DescriptorType::eStorageImage,
-		  .descriptorCount =
-			  static_cast<uint32_t>(m_ddgiDepthImages.size() * MAX_FRAMES_IN_FLIGHT)}}
+		 {.type = vk::DescriptorType::eStorageImage, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eStorageImage, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eStorageImage, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eStorageImage, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eCombinedImageSampler,
+		  .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eCombinedImageSampler,
+		  .descriptorCount = MAX_FRAMES_IN_FLIGHT}}
 	};
 	vk::DescriptorPoolCreateInfo poolInfo {
 		.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
@@ -298,47 +301,48 @@ vk::DescriptorPoolCreateInfo VulkanInterface::createDescriptorPool(uint32_t text
 }
 vk::raii::DescriptorSetLayout
 VulkanInterface::createDescriptorSetLayout(uint32_t textureCount) const {
-	std::array<vk::DescriptorSetLayoutBinding, 13> bindings {
+	std::array<vk::DescriptorSetLayoutBinding, 19> bindings {
 		{{0, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr},
 		 {.binding = 1,
 		  .descriptorType = vk::DescriptorType::eUniformBuffer,
 		  .descriptorCount = 1,
-		  .stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+		  .stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment |
+						vk::ShaderStageFlagBits::eCompute,
 		  .pImmutableSamplers = nullptr},
 		 {.binding = 2,
 		  .descriptorType = vk::DescriptorType::eStorageBuffer,
 		  .descriptorCount = 1,
-		  .stageFlags = vk::ShaderStageFlagBits::eFragment,
+		  .stageFlags = vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eCompute,
 		  .pImmutableSamplers = nullptr},
 		 {.binding = 3,
 		  .descriptorType = vk::DescriptorType::eCombinedImageSampler,
 		  .descriptorCount = textureCount,
-		  .stageFlags = vk::ShaderStageFlagBits::eFragment,
+		  .stageFlags = vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eCompute,
 		  .pImmutableSamplers = nullptr},
 		 {.binding = 4,
 		  .descriptorType = vk::DescriptorType::eStorageBuffer,
 		  .descriptorCount = 1,
-		  .stageFlags = vk::ShaderStageFlagBits::eFragment,
+		  .stageFlags = vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eCompute,
 		  .pImmutableSamplers = nullptr},
 		 {.binding = 5,
 		  .descriptorType = vk::DescriptorType::eAccelerationStructureKHR,
 		  .descriptorCount = 1,
-		  .stageFlags = vk::ShaderStageFlagBits::eFragment,
+		  .stageFlags = vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eCompute,
 		  .pImmutableSamplers = nullptr},
 		 {.binding = 6,
 		  .descriptorType = vk::DescriptorType::eStorageBuffer,
 		  .descriptorCount = 1,
-		  .stageFlags = vk::ShaderStageFlagBits::eFragment,
+		  .stageFlags = vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eCompute,
 		  .pImmutableSamplers = nullptr},
 		 {.binding = 7,
 		  .descriptorType = vk::DescriptorType::eStorageBuffer,
 		  .descriptorCount = 1,
-		  .stageFlags = vk::ShaderStageFlagBits::eFragment,
+		  .stageFlags = vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eCompute,
 		  .pImmutableSamplers = nullptr},
 		 {.binding = 8,
 		  .descriptorType = vk::DescriptorType::eStorageBuffer,
 		  .descriptorCount = 1,
-		  .stageFlags = vk::ShaderStageFlagBits::eFragment,
+		  .stageFlags = vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eCompute,
 		  .pImmutableSamplers = nullptr},
 		 {.binding = 9,
 		  .descriptorType = vk::DescriptorType::eStorageBuffer,
@@ -351,11 +355,41 @@ VulkanInterface::createDescriptorSetLayout(uint32_t textureCount) const {
 		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
 		  .pImmutableSamplers = nullptr},
 		 {.binding = 11,
-		  .descriptorType = vk::DescriptorType::eStorageImage,
+		  .descriptorType = vk::DescriptorType::eCombinedImageSampler,
 		  .descriptorCount = 1,
 		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
 		  .pImmutableSamplers = nullptr},
 		 {.binding = 12,
+		  .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+		  .descriptorCount = 1,
+		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
+		  .pImmutableSamplers = nullptr},
+		 {.binding = 13,
+		  .descriptorType = vk::DescriptorType::eStorageBuffer,
+		  .descriptorCount = 1,
+		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
+		  .pImmutableSamplers = nullptr},
+		 {.binding = 14,
+		  .descriptorType = vk::DescriptorType::eUniformBuffer,
+		  .descriptorCount = 1,
+		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
+		  .pImmutableSamplers = nullptr},
+		 {.binding = 15,
+		  .descriptorType = vk::DescriptorType::eStorageImage,
+		  .descriptorCount = 1,
+		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
+		  .pImmutableSamplers = nullptr},
+		 {.binding = 16,
+		  .descriptorType = vk::DescriptorType::eStorageImage,
+		  .descriptorCount = 1,
+		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
+		  .pImmutableSamplers = nullptr},
+		 {.binding = 17,
+		  .descriptorType = vk::DescriptorType::eStorageImage,
+		  .descriptorCount = 1,
+		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
+		  .pImmutableSamplers = nullptr},
+		 {.binding = 18,
 		  .descriptorType = vk::DescriptorType::eStorageImage,
 		  .descriptorCount = 1,
 		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
@@ -366,34 +400,6 @@ VulkanInterface::createDescriptorSetLayout(uint32_t textureCount) const {
 	};
 	return {m_device, layoutInfo};
 }
-vk::raii::DescriptorSetLayout VulkanInterface::createComputeDescriptorSetLayout() const {
-	std::array<vk::DescriptorSetLayoutBinding, 4> bindings {
-		{{.binding = 0,
-		  .descriptorType = vk::DescriptorType::eAccelerationStructureKHR,
-		  .descriptorCount = 1,
-		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
-		  .pImmutableSamplers = nullptr},
-		 {.binding = 1,
-		  .descriptorType = vk::DescriptorType::eStorageBuffer,
-		  .descriptorCount = 1,
-		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
-		  .pImmutableSamplers = nullptr},
-		 {.binding = 2,
-		  .descriptorType = vk::DescriptorType::eStorageImage,
-		  .descriptorCount = 1,
-		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
-		  .pImmutableSamplers = nullptr},
-		 {.binding = 3,
-		  .descriptorType = vk::DescriptorType::eStorageImage,
-		  .descriptorCount = 1,
-		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
-		  .pImmutableSamplers = nullptr}}
-	};
-	vk::DescriptorSetLayoutCreateInfo layoutInfo {
-		.bindingCount = static_cast<uint32_t>(bindings.size()), .pBindings = bindings.data()
-	};
-	return {m_device, layoutInfo};
-};
 
 std::vector<char> VulkanInterface::readFile(const std::string& filename) {
 	std::ifstream file {filename, std::ios::ate | std::ios::binary};
@@ -612,7 +618,21 @@ void VulkanInterface::updateBuffers() {
 				sizeof(SubMeshMetadataBufferObject)
 			);
 		}
+		vmaCopyMemoryToAllocation(
+			m_allocator,
+			&(m_currentScene->getDdgiProbeBounds()),
+			m_ddgiProbeBoundsAllocations[m_frameIndex],
+			0,
+			sizeof(DDGIProbeBounds)
+		);
 	}
+	vmaCopyMemoryToAllocation(
+		m_allocator,
+		distributePointsOnUnitSphere(DDGI_PROBE_SAMPLES).data(),
+		m_ddgiProbeSampleAllocations[m_frameIndex],
+		0,
+		sizeof(glm::vec3) * DDGI_PROBE_SAMPLES
+	);
 }
 void VulkanInterface::updateTlas() {
 	if (m_currentScene->modelsUpdated()) {
@@ -732,10 +752,10 @@ void VulkanInterface::updateTlas() {
 }
 void VulkanInterface::restructureDdgiProbes() {
 
-	const std::array<std::pair<int, int>, 3>& bounds {m_currentScene->getDdgiProbeBounds()};
-	for (int x {bounds[0].first}; x <= bounds[0].second; ++x) {
-		for (int y {bounds[1].first}; y <= bounds[1].second; ++y) {
-			for (int z {bounds[2].first}; z <= bounds[2].second; ++z) {
+	const DDGIProbeBounds& bounds {m_currentScene->getDdgiProbeBounds()};
+	for (int x {bounds.xLower}; x <= bounds.xUpper; ++x) {
+		for (int y {bounds.yLower}; y <= bounds.yUpper; ++y) {
+			for (int z {bounds.zLower}; z <= bounds.zUpper; ++z) {
 				size_t index {probeCoordinatesToIndex(x, y, z)};
 				if (m_ddgiProbePositions[index] != glm::vec3 {x, y, z}) {
 					m_ddgiProbePositions[index] = glm::vec3 {x, y, z};
@@ -760,4 +780,24 @@ size_t VulkanInterface::probeCoordinatesToIndex(int x, int y, int z) const {
 	}
 	return newX * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z +
 		   newY * DDGI_PROBE_DIMENSIONS.z + newZ;
+}
+
+std::vector<glm::vec3> VulkanInterface::distributePointsOnUnitSphere(int samples) const {
+	PRNG rng {};
+	float rotationAngle {static_cast<float>(rng.getRandomFloat() * 2 * std::numbers::pi)};
+
+	std::vector<glm::vec3> points {};
+	float phi {static_cast<float>((3 - std::sqrt(5)) * std::numbers::pi) + rotationAngle};
+	points.reserve(samples);
+	for (int sample {0}; sample < samples; ++sample) {
+		float z {1 - 2 * (static_cast<float>(sample) / samples)};
+		float radius {static_cast<float>(sqrt(1 - z * z))};
+
+		float theta {phi * sample};
+
+		float x = cos(theta) * radius;
+		float y = sin(theta) * radius;
+		points.emplace_back(x, y, z);
+	}
+	return points;
 }

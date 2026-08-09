@@ -42,12 +42,12 @@ if(ENABLE_CPP20_MODULE)
   # Add MSVC-specific compiler options for proper C++ module support
   if(MSVC)
     target_compile_options(VulkanCppModule PRIVATE
-      /std:c++latest      # Use latest C++ standard for better module support
-      /permissive-        # Standards conformance mode
-      /Zc:__cplusplus     # Enable correct __cplusplus macro
-      /EHsc               # Enable C++ exception handling
-      /Zc:preprocessor    # Use conforming preprocessor
-      /translateInclude   # Automatically translate #include to import for standard library
+      /std:c++latest # Use latest C++ standard for better module support
+      /permissive- # Standards conformance mode
+      /Zc:__cplusplus # Enable correct __cplusplus macro
+      /EHsc # Enable C++ exception handling
+      /Zc:preprocessor # Use conforming preprocessor
+      /translateInclude # Automatically translate #include to import for standard library
     )
   endif()
 
@@ -81,42 +81,47 @@ add_executable(${PROJECT_NAME}
   src/VulkanInterfaceDraw.cpp
 )
 
-target_link_libraries (${PROJECT_NAME} Vulkan::cppm glfw glm::glm fastgltf KTX::ktx VulkanMemoryAllocator)
+target_link_libraries(${PROJECT_NAME} Vulkan::cppm glfw glm::glm fastgltf KTX::ktx VulkanMemoryAllocator)
 
 find_program(SLANGC_EXECUTABLE slangc HINTS $ENV{VULKAN_SDK}/bin REQUIRED)
+
 # Slang shader
-function (compile_shaders TARGET)
-  cmake_parse_arguments ("SHADER" "" "OUTPUT" "SOURCES;ENTRY_POINTS" ${ARGN})
-  set (SHADERS_DIR ${CMAKE_CURRENT_LIST_DIR}/shaders)
-  set (ENTRY_POINTS)
+function(compile_shaders TARGET)
+  cmake_parse_arguments("SHADER" "" "OUTPUT" "SOURCES;ENTRY_POINTS" ${ARGN})
+  set(SHADERS_DIR ${CMAKE_CURRENT_LIST_DIR}/shaders)
+  set(ENTRY_POINTS)
+
   foreach(entry ${SHADER_ENTRY_POINTS})
     list(APPEND ENTRY_POINTS -entry ${entry})
   endforeach()
-  add_custom_command (
-          OUTPUT ${SHADERS_DIR}
-          COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_DIR}
+
+  add_custom_command(
+    OUTPUT ${SHADERS_DIR}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_DIR}
   )
-  add_custom_command (
-          OUTPUT  ${SHADER_OUTPUT}
-          COMMAND ${SLANGC_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/src/${SHADER_SOURCES} -target spirv -profile spirv_1_4 -emit-spirv-directly -fvk-use-entrypoint-name -fvk-use-c-layout ${ENTRY_POINTS} -o ${SHADER_OUTPUT}
-          WORKING_DIRECTORY ${SHADERS_DIR}
-          DEPENDS ${SHADERS_DIR} src/${SHADER_SOURCES}
-          COMMENT "Compiling Slang Shaders"
-          VERBATIM
+  add_custom_command(
+    OUTPUT ${SHADER_OUTPUT}
+    COMMAND ${SLANGC_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/src/${SHADER_SOURCES} -target spirv -profile spirv_1_4 -emit-spirv-directly -fvk-use-entrypoint-name -fvk-use-c-layout ${ENTRY_POINTS} -o ${SHADER_OUTPUT}
+    WORKING_DIRECTORY ${SHADERS_DIR}
+    DEPENDS ${SHADERS_DIR} src/${SHADER_SOURCES}
+    COMMENT "Compiling Slang Shaders"
+    VERBATIM
   )
-  add_custom_target (${TARGET} DEPENDS ${SHADER_OUTPUT})
+  add_custom_target(${TARGET} DEPENDS ${SHADER_OUTPUT})
 endfunction()
 
-compile_shaders(graphics_shader OUTPUT graphics.spv SOURCES graphics.slang ENTRY_POINTS vertMain fragMain)
-compile_shaders(compute_shader OUTPUT compute.spv SOURCES compute.slang ENTRY_POINTS computeMain)
-add_dependencies(${PROJECT_NAME} graphics_shader compute_shader)
+compile_shaders(graphics_shader OUTPUT graphics.spv SOURCES Graphics.slang ENTRY_POINTS vertMain fragMain)
+compile_shaders(compute_ray_sample_shader OUTPUT ComputeRaySample.spv SOURCES ComputeRaySample.slang ENTRY_POINTS computeMain)
+compile_shaders(compute_probe_irradiance_update_shader OUTPUT ComputeProbeIrradianceUpdate.spv SOURCES ComputeProbeIrradianceUpdate.slang ENTRY_POINTS computeMain)
+compile_shaders(compute_probe_depth_update_shader OUTPUT ComputeProbeDepthUpdate.spv SOURCES ComputeProbeDepthUpdate.slang ENTRY_POINTS computeMain)
+add_dependencies(${PROJECT_NAME} graphics_shader compute_ray_sample_shader compute_probe_irradiance_update_shader compute_probe_depth_update_shader)
 
-target_compile_definitions(${PROJECT_NAME} PRIVATE 
+target_compile_definitions(${PROJECT_NAME} PRIVATE
   SHADER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/shaders"
   SCENE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/scenes"
 )
 
 target_precompile_headers(${PROJECT_NAME} PRIVATE
-    <vulkan/vulkan.hpp>
-    <vulkan/vulkan_raii.hpp>
+  <vulkan/vulkan.hpp>
+  <vulkan/vulkan_raii.hpp>
 )

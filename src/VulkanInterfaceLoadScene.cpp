@@ -29,7 +29,7 @@ void VulkanInterface::loadScene(const fastgltf::Asset& asset, Scene* pScene) {
 	createDescriptorSets(asset);
 	createComputeDescriptorSets();
 	createGraphicsPipeline();
-	createComputePipeline();
+	createComputePipelines();
 }
 
 void VulkanInterface::createTextureImages(const fastgltf::Asset& asset) {
@@ -361,62 +361,125 @@ void VulkanInterface::loadMeshes(const fastgltf::Asset& asset) {
 }
 
 void VulkanInterface::createDdgiProbes() {
-	const std::array<std::pair<int, int>, 3>& bounds {m_currentScene->getDdgiProbeBounds()};
+	const DDGIProbeBounds& bounds {m_currentScene->getDdgiProbeBounds()};
 	m_ddgiProbePositions.reserve(
 		DDGI_PROBE_DIMENSIONS.x * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z
 	);
-	for (int x {bounds[0].first}; x <= bounds[0].second; ++x) {
-		for (int y {bounds[1].first}; y <= bounds[1].second; ++y) {
-			for (int z {bounds[2].first}; z <= bounds[2].second; ++z) {
+	for (int x {bounds.xLower}; x <= bounds.xUpper; ++x) {
+		for (int y {bounds.yLower}; y <= bounds.yUpper; ++y) {
+			for (int z {bounds.zLower}; z <= bounds.zUpper; ++z) {
 				m_ddgiProbePositions.emplace_back(x, y, z);
 				probeCoordinatesToIndex(x, y, z);
 			}
 		}
 	}
 	for (int frameIndex {0}; frameIndex < MAX_FRAMES_IN_FLIGHT; ++frameIndex) {
-		for (int ddgiTextureIndex {0}; ddgiTextureIndex < 1; ++ddgiTextureIndex) {
-			createImage(
-				256 * 2,
-				256 * 2,
-				1,
-				vk::Format::eB10G11R11UfloatPack32,
-				vk::ImageTiling::eOptimal,
-				vk::ImageUsageFlagBits::eStorage,
-				m_ddgiIrradianceImages[frameIndex][ddgiTextureIndex],
-				m_ddgiIrradianceAllocations[frameIndex][ddgiTextureIndex]
-			);
-			m_ddgiIrradianceImageViews[frameIndex][ddgiTextureIndex] = std::move(createImageView(
-				m_ddgiIrradianceImages[frameIndex][ddgiTextureIndex],
-				vk::Format::eB10G11R11UfloatPack32,
-				vk::ImageAspectFlagBits::eColor,
-				1
-			));
-			createImage(
-				512 * 2,
-				512 * 2,
-				1,
-				vk::Format::eR16G16Sfloat,
-				vk::ImageTiling::eOptimal,
-				vk::ImageUsageFlagBits::eStorage,
-				m_ddgiDepthImages[frameIndex][ddgiTextureIndex],
-				m_ddgiDepthAllocations[frameIndex][ddgiTextureIndex]
-			);
-			m_ddgiDepthImageViews[frameIndex][ddgiTextureIndex] = createImageView(
-				m_ddgiDepthImages[frameIndex][ddgiTextureIndex],
-				vk::Format::eR16G16Sfloat,
-				vk::ImageAspectFlagBits::eColor,
-				1
-			);
-		}
+		createImage(
+			256 * 2,
+			256 * 2,
+			1,
+			vk::Format::eB10G11R11UfloatPack32,
+			vk::ImageTiling::eOptimal,
+			vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled,
+			m_ddgiIrradianceImages[frameIndex],
+			m_ddgiIrradianceAllocations[frameIndex]
+		);
+		m_ddgiIrradianceImageViews[frameIndex] = createImageView(
+			m_ddgiIrradianceImages[frameIndex],
+			vk::Format::eB10G11R11UfloatPack32,
+			vk::ImageAspectFlagBits::eColor,
+			1
+		);
+		createImage(
+			512 * 2,
+			512 * 2,
+			1,
+			vk::Format::eR16G16Sfloat,
+			vk::ImageTiling::eOptimal,
+			vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled,
+			m_ddgiDepthImages[frameIndex],
+			m_ddgiDepthAllocations[frameIndex]
+		);
+		m_ddgiDepthImageViews[frameIndex] = createImageView(
+			m_ddgiDepthImages[frameIndex],
+			vk::Format::eR16G16Sfloat,
+			vk::ImageAspectFlagBits::eColor,
+			1
+		);
 		createBuffer(
 			sizeof(glm::vec3) * m_ddgiProbePositions.size(),
 			vk::BufferUsageFlagBits::eStorageBuffer,
 			VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
 				VMA_ALLOCATION_CREATE_MAPPED_BIT,
-			m_ddgiProbePositionBuffer[frameIndex],
-			m_ddgiProbePositionAllocation[frameIndex]
+			m_ddgiProbePositionBuffers[frameIndex],
+			m_ddgiProbePositionAllocations[frameIndex]
+		);
+		createBuffer(
+			sizeof(glm::vec3) * DDGI_PROBE_SAMPLES,
+			vk::BufferUsageFlagBits::eStorageBuffer,
+			VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+				VMA_ALLOCATION_CREATE_MAPPED_BIT,
+			m_ddgiProbeSampleBuffers[frameIndex],
+			m_ddgiProbeSampleAllocations[frameIndex]
+		);
+		createBuffer(
+			sizeof(DDGIProbeBounds),
+			vk::BufferUsageFlagBits::eUniformBuffer,
+			VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+				VMA_ALLOCATION_CREATE_MAPPED_BIT,
+			m_ddgiProbeBoundsBuffers[frameIndex],
+			m_ddgiProbeBoundsAllocations[frameIndex]
+		);
+		createImage(
+			192,
+			DDGI_PROBE_DIMENSIONS.x * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z,
+			1,
+			vk::Format::eB10G11R11UfloatPack32,
+			vk::ImageTiling::eOptimal,
+			vk::ImageUsageFlagBits::eStorage,
+			m_ddgiRadianceTransmissionImages[frameIndex],
+			m_ddgiRadianceTransmissionAllocations[frameIndex]
+		);
+		m_ddgiRadianceTransmissionImageViews[frameIndex] = createImageView(
+			m_ddgiRadianceTransmissionImages[frameIndex],
+			vk::Format::eB10G11R11UfloatPack32,
+			vk::ImageAspectFlagBits::eColor,
+			1
+		);
+		createImage(
+			192,
+			DDGI_PROBE_DIMENSIONS.x * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z,
+			1,
+			vk::Format::eR16Sfloat,
+			vk::ImageTiling::eOptimal,
+			vk::ImageUsageFlagBits::eStorage,
+			m_ddgiDistanceTransmissionImages[frameIndex],
+			m_ddgiDistanceTransmissionAllocations[frameIndex]
+		);
+		m_ddgiDistanceTransmissionImageViews[frameIndex] = createImageView(
+			m_ddgiDistanceTransmissionImages[frameIndex],
+			vk::Format::eR16Sfloat,
+			vk::ImageAspectFlagBits::eColor,
+			1
 		);
 	}
+	vk::PhysicalDeviceProperties properties = m_physicalDevice.getProperties2().properties;
+	vk::SamplerCreateInfo ddgiSamplerInfo {
+		.magFilter = vk::Filter::eLinear,
+		.minFilter = vk::Filter::eLinear,
+		.mipmapMode = vk::SamplerMipmapMode::eLinear,
+		.addressModeU = vk::SamplerAddressMode::eRepeat,
+		.addressModeV = vk::SamplerAddressMode::eRepeat,
+		.addressModeW = vk::SamplerAddressMode::eRepeat,
+		.mipLodBias = 0.0f,
+		.anisotropyEnable = vk::True,
+		.maxAnisotropy = properties.limits.maxSamplerAnisotropy,
+		.compareEnable = vk::False,
+		.compareOp = vk::CompareOp::eAlways,
+		.minLod = 0.0f,
+		.maxLod = vk::LodClampNone
+	};
+	m_ddgiTextureSampler = {m_device, ddgiSamplerInfo};
 }
 
 void VulkanInterface::createAccelerationStructures() {
@@ -995,19 +1058,39 @@ void VulkanInterface::createComputeDescriptorSets() {
 			.accelerationStructureCount = 1, .pAccelerationStructures = &*m_tlas
 		};
 		vk::DescriptorBufferInfo ddgiPositionBufferInfo {
-			.buffer = m_ddgiProbePositionBuffer[frameIndex],
+			.buffer = m_ddgiProbePositionBuffers[frameIndex],
 			.offset = 0,
 			.range = sizeof(glm::vec3) * m_ddgiProbePositions.size()
 		};
 		vk::DescriptorImageInfo ddgiIrradianceImageInfo {
-			.imageView = m_ddgiIrradianceImageViews[frameIndex][0],
+			.sampler = m_ddgiTextureSampler,
+			.imageView = m_ddgiIrradianceImageViews[frameIndex],
 			.imageLayout = vk::ImageLayout::eGeneral
 		};
 		vk::DescriptorImageInfo ddgiDepthImageInfo {
-			.imageView = m_ddgiDepthImageViews[frameIndex][0],
+			.sampler = m_ddgiTextureSampler,
+			.imageView = m_ddgiDepthImageViews[frameIndex],
 			.imageLayout = vk::ImageLayout::eGeneral
 		};
-		std::array<vk::WriteDescriptorSet, 3> descriptorWrites {
+		vk::DescriptorBufferInfo ddgiProbeSampleBufferInfo {
+			.buffer = m_ddgiProbeSampleBuffers[frameIndex],
+			.offset = 0,
+			.range = sizeof(glm::vec3) * DDGI_PROBE_SAMPLES
+		};
+		vk::DescriptorBufferInfo ddgiProbeBoundsBufferInfo {
+			.buffer = m_ddgiProbeBoundsBuffers[frameIndex],
+			.offset = 0,
+			.range = sizeof(DDGIProbeBounds)
+		};
+		vk::DescriptorImageInfo ddgiRadianceTransmissionImageInfo {
+			.imageView = m_ddgiRadianceTransmissionImageViews[frameIndex],
+			.imageLayout = vk::ImageLayout::eGeneral
+		};
+		vk::DescriptorImageInfo ddgiDistanceTransmissionImageInfo {
+			.imageView = m_ddgiDistanceTransmissionImageViews[frameIndex],
+			.imageLayout = vk::ImageLayout::eGeneral
+		};
+		std::array<vk::WriteDescriptorSet, 9> descriptorWrites {
 			{{.dstSet = m_descriptorSets[frameIndex],
 			  .dstBinding = 10,
 			  .dstArrayElement = 0,
@@ -1018,10 +1101,46 @@ void VulkanInterface::createComputeDescriptorSets() {
 			  .dstBinding = 11,
 			  .dstArrayElement = 0,
 			  .descriptorCount = 1,
-			  .descriptorType = vk::DescriptorType::eStorageImage,
+			  .descriptorType = vk::DescriptorType::eCombinedImageSampler,
 			  .pImageInfo = &ddgiIrradianceImageInfo},
 			 {.dstSet = m_descriptorSets[frameIndex],
 			  .dstBinding = 12,
+			  .dstArrayElement = 0,
+			  .descriptorCount = 1,
+			  .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+			  .pImageInfo = &ddgiDepthImageInfo},
+			 {.dstSet = m_descriptorSets[frameIndex],
+			  .dstBinding = 13,
+			  .dstArrayElement = 0,
+			  .descriptorCount = 1,
+			  .descriptorType = vk::DescriptorType::eStorageBuffer,
+			  .pBufferInfo = &ddgiProbeSampleBufferInfo},
+			 {.dstSet = m_descriptorSets[frameIndex],
+			  .dstBinding = 14,
+			  .dstArrayElement = 0,
+			  .descriptorCount = 1,
+			  .descriptorType = vk::DescriptorType::eUniformBuffer,
+			  .pBufferInfo = &ddgiProbeBoundsBufferInfo},
+			 {.dstSet = m_descriptorSets[frameIndex],
+			  .dstBinding = 15,
+			  .dstArrayElement = 0,
+			  .descriptorCount = 1,
+			  .descriptorType = vk::DescriptorType::eStorageImage,
+			  .pImageInfo = &ddgiRadianceTransmissionImageInfo},
+			 {.dstSet = m_descriptorSets[frameIndex],
+			  .dstBinding = 16,
+			  .dstArrayElement = 0,
+			  .descriptorCount = 1,
+			  .descriptorType = vk::DescriptorType::eStorageImage,
+			  .pImageInfo = &ddgiDistanceTransmissionImageInfo},
+			 {.dstSet = m_descriptorSets[frameIndex],
+			  .dstBinding = 17,
+			  .dstArrayElement = 0,
+			  .descriptorCount = 1,
+			  .descriptorType = vk::DescriptorType::eStorageImage,
+			  .pImageInfo = &ddgiIrradianceImageInfo},
+			 {.dstSet = m_descriptorSets[frameIndex],
+			  .dstBinding = 18,
 			  .dstArrayElement = 0,
 			  .descriptorCount = 1,
 			  .descriptorType = vk::DescriptorType::eStorageImage,
@@ -1146,7 +1265,7 @@ void VulkanInterface::createGraphicsPipeline() {
 		m_device, nullptr, pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>()
 	};
 }
-void VulkanInterface::createComputePipeline() {
+void VulkanInterface::createComputePipelines() {
 	vk::raii::ShaderModule shaderModule {createShaderModule(readFile(SHADER_PATH "/compute.spv"))};
 
 	vk::PipelineShaderStageCreateInfo computeShaderStageInfo {
@@ -1155,9 +1274,9 @@ void VulkanInterface::createComputePipeline() {
 	vk::PipelineLayoutCreateInfo pipelineLayoutInfo {
 		.setLayoutCount = 1, .pSetLayouts = &*m_descriptorSetLayout
 	};
-	m_computePipelineLayout = {m_device, pipelineLayoutInfo};
+	m_computeRaySamplePipelineLayout = {m_device, pipelineLayoutInfo};
 	vk::ComputePipelineCreateInfo pipelineInfo {
-		.stage = computeShaderStageInfo, .layout = m_computePipelineLayout
+		.stage = computeShaderStageInfo, .layout = m_computeRaySamplePipelineLayout
 	};
-	m_computePipeline = vk::raii::Pipeline {m_device, nullptr, pipelineInfo};
+	m_computeRaySamplePipeline = vk::raii::Pipeline {m_device, nullptr, pipelineInfo};
 }

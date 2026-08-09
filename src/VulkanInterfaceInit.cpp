@@ -278,7 +278,6 @@ void VulkanInterface::createCommandBuffers() {
 		.commandBufferCount = MAX_FRAMES_IN_FLIGHT
 	};
 	m_commandBuffers = vk::raii::CommandBuffers {m_device, allocInfo};
-	m_computeCommandBuffers = vk::raii::CommandBuffers {m_device, allocInfo};
 }
 
 void VulkanInterface::createDepthResources() {
