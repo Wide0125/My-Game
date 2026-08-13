@@ -6,8 +6,8 @@ import lighting;
 void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID) {
 	RayDesc probeRayDesc;
 	probeRayDesc.Origin = ddgiProbePositions
-	[probeIndex.x * WorkgroupSize().y * WorkgroupSize().z + probeIndex.y * WorkgroupSize().z +
-	 probeIndex.z];
+	[probeIndex.x * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z +
+	 probeIndex.y * DDGI_PROBE_DIMENSIONS.z + probeIndex.z];
 	probeRayDesc.Direction = ddgiProbeSamples[rayIndex.x];
 	probeRayDesc.TMin = EPSILON;
 	probeRayDesc.TMax = 1e4;
@@ -47,15 +47,12 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 	float3 sampledRadiance;
 	float sampledDistance;
 	if (probeQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
-		uint instanceIndex = probeQuery.CandidateRayInstanceCustomIndex();
-		uint primIndex = probeQuery.CandidatePrimitiveIndex();
-
 		VSOutput intersectionPoint = intersectionVSOutput(
-			instanceIndex,
-			primIndex,
-			probeQuery.CandidateTriangleBarycentrics(),
-			probeQuery.CommittedWorldToObject3x4(),
-			probeQuery.CommittedObjectToWorld4x3()
+			probeQuery.CommittedRayInstanceCustomIndex(),
+			probeQuery.CommittedRayPrimitiveIndex(),
+			probeQuery.CommittedRayBarycentrics(),
+			probeQuery.CommittedRayObjectToWorld(),
+			probeQuery.CommittedRayWorldToObject()
 		);
 		MaterialBuffer currMaterial = materials[intersectionPoint.materialIndex];
 
@@ -70,6 +67,9 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 					2.0 -
 				1.0;
 			N = normalize(mul(mappedNormal, TBN));
+		}
+		if (any(isnan(N))) {
+			N = { 0, 0, 1 };
 		}
 
 		float4 baseColor = currMaterial.baseColorFactor;
@@ -102,7 +102,9 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 			roughness,
 			ao,
 			currMaterial.alphaMode,
-			probeQuery.WorldRayOrigin()
+			ddgiProbePositions
+			[probeIndex.x * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z +
+			 probeIndex.y * DDGI_PROBE_DIMENSIONS.z + probeIndex.z]
 		);
 		sampledRadiance = intersectionPointRadiance.rgb;
 		sampledDistance = distance(probeQuery.WorldRayOrigin(), intersectionPoint.worldPosition);

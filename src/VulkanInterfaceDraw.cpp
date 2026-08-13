@@ -35,7 +35,7 @@ void VulkanInterface::drawFrame() {
 	commandBuffer.reset();
 	commandBuffer.begin({});
 	// Before starting rendering, transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL
-	transition_image_layout(
+	transitionImageLayoutPipeline(
 		m_swapChainImages[imageIndex],
 		vk::ImageLayout::eUndefined,
 		vk::ImageLayout::eColorAttachmentOptimal,
@@ -46,7 +46,7 @@ void VulkanInterface::drawFrame() {
 		vk::ImageAspectFlagBits::eColor
 	);
 	// Transition depth image to depth attachment optimal layout
-	transition_image_layout(
+	transitionImageLayoutPipeline(
 		m_depthImage,
 		vk::ImageLayout::eUndefined,
 		vk::ImageLayout::eDepthAttachmentOptimal,
@@ -93,24 +93,49 @@ void VulkanInterface::drawFrame() {
 		*m_descriptorSets[m_frameIndex],
 		nullptr
 	);
+
 	commandBuffer.bindPipeline(
 		vk::PipelineBindPoint::eCompute, m_computeRaySamplePipeline
 	); // compute
 	commandBuffer.dispatch(
 		DDGI_PROBE_DIMENSIONS.x, DDGI_PROBE_DIMENSIONS.y, DDGI_PROBE_DIMENSIONS.z
 	);
-	commandBuffer.clearColorImage(
-		m_ddgiDepthImages[m_frameIndex], vk::ImageLayout::eGeneral, clearColor.color, {}
-	);
 
-	vk::MemoryBarrier2 memoryBarrier {
-		.srcStageMask = vk::PipelineStageFlagBits2::eComputeShader,
+	m_pipelineMemoryBarrier = {
+		.srcStageMask = vk::PipelineStageFlagBits2::eComputeShader |
+						vk::PipelineStageFlagBits2::eFragmentShader,
 		.srcAccessMask = vk::AccessFlagBits2::eShaderWrite,
-		.dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader,
+		.dstStageMask = vk::PipelineStageFlagBits2::eComputeShader,
 		.dstAccessMask = vk::AccessFlagBits2::eShaderRead
 	};
-	vk::DependencyInfo dependencyInfo {.memoryBarrierCount = 1, .pMemoryBarriers = &memoryBarrier};
-	commandBuffer.pipelineBarrier2(dependencyInfo);
+	m_pipelineDependencyInfo = {
+		.memoryBarrierCount = 1, .pMemoryBarriers = &m_pipelineMemoryBarrier
+	};
+	commandBuffer.pipelineBarrier2(m_pipelineDependencyInfo);
+
+	commandBuffer.bindPipeline(
+		vk::PipelineBindPoint::eCompute, m_computeProbeIrradianceUpdatePipeline
+	);
+	commandBuffer.dispatch(
+		DDGI_PROBE_DIMENSIONS.x, DDGI_PROBE_DIMENSIONS.y, DDGI_PROBE_DIMENSIONS.z
+	);
+
+	commandBuffer.bindPipeline(vk::PipelineBindPoint::eCompute,
+	m_computeProbeDepthUpdatePipeline); commandBuffer.dispatch( 	DDGI_PROBE_DIMENSIONS.x,
+	DDGI_PROBE_DIMENSIONS.y, DDGI_PROBE_DIMENSIONS.z
+	);
+
+	m_pipelineMemoryBarrier = {
+		.srcStageMask = vk::PipelineStageFlagBits2::eComputeShader,
+		.srcAccessMask = vk::AccessFlagBits2::eShaderWrite,
+		.dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader |
+						vk::PipelineStageFlagBits2::eComputeShader,
+		.dstAccessMask = vk::AccessFlagBits2::eShaderRead
+	};
+	m_pipelineDependencyInfo = {
+		.memoryBarrierCount = 1, .pMemoryBarriers = &m_pipelineMemoryBarrier
+	};
+	commandBuffer.pipelineBarrier2(m_pipelineDependencyInfo);
 
 	commandBuffer.beginRendering(renderingInfo);
 	commandBuffer.bindDescriptorSets(
@@ -144,7 +169,7 @@ void VulkanInterface::drawFrame() {
 	);
 
 	commandBuffer.endRendering();
-	transition_image_layout(
+	transitionImageLayoutPipeline(
 		m_swapChainImages[imageIndex],
 		vk::ImageLayout::eColorAttachmentOptimal,
 		vk::ImageLayout::ePresentSrcKHR,

@@ -128,28 +128,13 @@ RWTexture2D<float3> ddgiIrradianceTexture;
 [vk::image_format("rg16f")]
 [vk::binding(18, 0)]
 RWTexture2D<float2> ddgiDepthTexture;
+[vk::image_format("r32ui")]
+[vk::binding(19, 0)] 
+RWTexture2D<uint> ddgiDepthSampleCountTexture;
 
 static const float EPSILON = 0.01;
 static const float PI = 3.14159265359;
 static const uint32_t UINT32_MAX = 4294967295;
-static const int3 DDGI_PROBE_DIMENSIONS = { 32, 4, 32 };
+static const int3 DDGI_PROBE_DIMENSIONS = { 32, 32, 4 };
 static const int RAY_COUNT = 192;
 static const float HYSTERESIS = 0.85;
-
-uint probeCoordinatesToIndex(int x, int y, int z) {
-	float3 cameraPosition = vpTransform.cameraPosition;
-	int newX = (x + DDGI_PROBE_DIMENSIONS.x / 2) % DDGI_PROBE_DIMENSIONS.x;
-	if (newX < 0) {
-		newX += DDGI_PROBE_DIMENSIONS.x;
-	}
-	int newY = (y + DDGI_PROBE_DIMENSIONS.y / 2) % DDGI_PROBE_DIMENSIONS.y;
-	if (newY < 0) {
-		newY += DDGI_PROBE_DIMENSIONS.y;
-	}
-	int newZ = (z + DDGI_PROBE_DIMENSIONS.z / 2) % DDGI_PROBE_DIMENSIONS.z;
-	if (newZ < 0) {
-		newZ += DDGI_PROBE_DIMENSIONS.z;
-	}
-	return newX * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z +
-		   newY * DDGI_PROBE_DIMENSIONS.z + newZ;
-}

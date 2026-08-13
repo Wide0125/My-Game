@@ -6,6 +6,8 @@
 
 #include "PRNG.h"
 
+#include "mikktspace.h"
+
 // initVulkan helper functions
 bool VulkanInterface::isDeviceSuitable(const vk::raii::PhysicalDevice& physicalDevice) const {
 	bool supportsVulkan1_3 {
@@ -129,6 +131,30 @@ void VulkanInterface::createImage(
 	}
 	image = imageTemp;
 }
+
+void VulkanInterface::transitionImageLayout(
+	const vk::Image& image,
+	const vk::ImageLayout oldLayout,
+	const vk::ImageLayout newLayout,
+	uint32_t mipLevels
+) {
+	const auto commandBuffer = beginSingleTimeCommands();
+
+	vk::ImageMemoryBarrier2 barrier {
+		.srcStageMask = vk::PipelineStageFlagBits2::eNone,
+		.dstStageMask = vk::PipelineStageFlagBits2::eAllCommands,
+		.oldLayout = oldLayout,
+		.newLayout = newLayout,
+		.image = image,
+		.subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, mipLevels, 0, 1}
+	};
+	vk::DependencyInfo dependencyInfo {
+		.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier
+	};
+	commandBuffer->pipelineBarrier2(dependencyInfo);
+	endSingleTimeCommands(*commandBuffer);
+}
+
 [[nodiscard]] vk::raii::ImageView VulkanInterface::createImageView(
 	const vk::Image& image, vk::Format format, vk::ImageAspectFlags aspectFlags, uint32_t mipLevels
 ) const {
@@ -243,6 +269,65 @@ void VulkanInterface::endSingleTimeCommands(const vk::raii::CommandBuffer& comma
 	m_queue.waitIdle();
 }
 
+void VulkanInterface::cleanup() {
+	m_textureImages.clear();
+	vmaDestroyImage(m_allocator, m_depthImage, m_depthImageAllocation);
+	vmaDestroyBuffer(m_allocator, m_materialBuffer, m_materialAllocation);
+	vmaDestroyBuffer(m_allocator, m_vertexBuffer, m_vertexAllocation);
+	vmaDestroyBuffer(m_allocator, m_indexBuffer, m_indexAllocation);
+	for (int frameIndex {0}; frameIndex < MAX_FRAMES_IN_FLIGHT; ++frameIndex) {
+		vmaDestroyBuffer(
+			m_allocator,
+			m_modelTransformBuffers[frameIndex],
+			m_modelTransformAllocations[frameIndex]
+		);
+		vmaDestroyBuffer(
+			m_allocator, m_vpTransformBuffers[frameIndex], m_vpTransformAllocations[frameIndex]
+		);
+		vmaDestroyBuffer(m_allocator, m_lightBuffers[frameIndex], m_lightAllocations[frameIndex]);
+		vmaDestroyBuffer(
+			m_allocator, m_drawCommandsBuffers[frameIndex], m_drawCommandsAllocations[frameIndex]
+		);
+		vmaDestroyBuffer(
+			m_allocator, m_metadataBuffers[frameIndex], m_metadataAllocations[frameIndex]
+		);
+		vmaDestroyBuffer(
+			m_allocator,
+			m_ddgiProbeSampleBuffers[frameIndex],
+			m_ddgiProbeSampleAllocations[frameIndex]
+		);
+		vmaDestroyBuffer(
+			m_allocator,
+			m_ddgiProbeBoundsBuffers[frameIndex],
+			m_ddgiProbeBoundsAllocations[frameIndex]
+		);
+		vmaDestroyBuffer(
+			m_allocator,
+			m_ddgiProbePositionBuffers[frameIndex],
+			m_ddgiProbePositionAllocations[frameIndex]
+		);
+	}
+	vmaDestroyImage(m_allocator, m_ddgiIrradianceImage, m_ddgiIrradianceAllocation);
+	vmaDestroyImage(m_allocator, m_ddgiDepthImage, m_ddgiDepthAllocation);
+	vmaDestroyImage(
+		m_allocator, m_ddgiRadianceTransmissionImage, m_ddgiRadianceTransmissionAllocation
+	);
+	vmaDestroyImage(
+		m_allocator, m_ddgiDistanceTransmissionImage, m_ddgiDistanceTransmissionAllocation
+	);
+	vmaDestroyImage(m_allocator, m_ddgiDepthSampleCountImage, m_ddgiDepthSampleCountAllocation);
+	for (int blasIndex {0}; blasIndex < m_blasBuffers.size(); ++blasIndex) {
+		vmaDestroyBuffer(m_allocator, m_blasBuffers[blasIndex], m_blasAllocations[blasIndex]);
+	}
+	vmaDestroyBuffer(m_allocator, m_blasInstanceBuffer, m_blasInstanceAllocation);
+	vmaDestroyBuffer(m_allocator, m_tlasBuffer, m_tlasAllocation);
+	vmaDestroyBuffer(m_allocator, m_tlasScratchBuffer, m_tlasScratchAllocation);
+	vmaDestroyBuffer(m_allocator, m_tlasLutBuffer, m_tlasLutAllocation);
+	vmaDestroyAllocator(m_allocator);
+	glfwDestroyWindow(m_window);
+	glfwTerminate();
+}
+
 // loadScene helper functions
 void VulkanInterface::copyBuffer(
 	vk::Buffer& srcBuffer, vk::Buffer& dstBuffer, vk::DeviceSize size
@@ -266,7 +351,7 @@ void VulkanInterface::copyBuffer(
 }
 
 vk::DescriptorPoolCreateInfo VulkanInterface::createDescriptorPool(uint32_t textureCount) const {
-	std::array<vk::DescriptorPoolSize, 19> poolSize {
+	std::array<vk::DescriptorPoolSize, 20> poolSize {
 		{{.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
@@ -289,7 +374,8 @@ vk::DescriptorPoolCreateInfo VulkanInterface::createDescriptorPool(uint32_t text
 		 {.type = vk::DescriptorType::eCombinedImageSampler,
 		  .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eCombinedImageSampler,
-		  .descriptorCount = MAX_FRAMES_IN_FLIGHT}}
+		  .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eStorageImage, .descriptorCount = MAX_FRAMES_IN_FLIGHT}}
 	};
 	vk::DescriptorPoolCreateInfo poolInfo {
 		.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
@@ -301,7 +387,7 @@ vk::DescriptorPoolCreateInfo VulkanInterface::createDescriptorPool(uint32_t text
 }
 vk::raii::DescriptorSetLayout
 VulkanInterface::createDescriptorSetLayout(uint32_t textureCount) const {
-	std::array<vk::DescriptorSetLayoutBinding, 19> bindings {
+	std::array<vk::DescriptorSetLayoutBinding, 20> bindings {
 		{{0, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr},
 		 {.binding = 1,
 		  .descriptorType = vk::DescriptorType::eUniformBuffer,
@@ -352,17 +438,17 @@ VulkanInterface::createDescriptorSetLayout(uint32_t textureCount) const {
 		 {.binding = 10,
 		  .descriptorType = vk::DescriptorType::eStorageBuffer,
 		  .descriptorCount = 1,
-		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
+		  .stageFlags = vk::ShaderStageFlagBits::eCompute | vk::ShaderStageFlagBits::eFragment,
 		  .pImmutableSamplers = nullptr},
 		 {.binding = 11,
 		  .descriptorType = vk::DescriptorType::eCombinedImageSampler,
 		  .descriptorCount = 1,
-		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
+		  .stageFlags = vk::ShaderStageFlagBits::eCompute | vk::ShaderStageFlagBits::eFragment,
 		  .pImmutableSamplers = nullptr},
 		 {.binding = 12,
 		  .descriptorType = vk::DescriptorType::eCombinedImageSampler,
 		  .descriptorCount = 1,
-		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
+		  .stageFlags = vk::ShaderStageFlagBits::eCompute | vk::ShaderStageFlagBits::eFragment,
 		  .pImmutableSamplers = nullptr},
 		 {.binding = 13,
 		  .descriptorType = vk::DescriptorType::eStorageBuffer,
@@ -372,7 +458,7 @@ VulkanInterface::createDescriptorSetLayout(uint32_t textureCount) const {
 		 {.binding = 14,
 		  .descriptorType = vk::DescriptorType::eUniformBuffer,
 		  .descriptorCount = 1,
-		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
+		  .stageFlags = vk::ShaderStageFlagBits::eCompute | vk::ShaderStageFlagBits::eFragment,
 		  .pImmutableSamplers = nullptr},
 		 {.binding = 15,
 		  .descriptorType = vk::DescriptorType::eStorageImage,
@@ -393,6 +479,11 @@ VulkanInterface::createDescriptorSetLayout(uint32_t textureCount) const {
 		  .descriptorType = vk::DescriptorType::eStorageImage,
 		  .descriptorCount = 1,
 		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
+		  .pImmutableSamplers = nullptr},
+		 {.binding = 19,
+		  .descriptorType = vk::DescriptorType::eStorageImage,
+		  .descriptorCount = 1,
+		  .stageFlags = vk::ShaderStageFlagBits::eCompute | vk::ShaderStageFlagBits::eFragment,
 		  .pImmutableSamplers = nullptr}}
 	};
 	vk::DescriptorSetLayoutCreateInfo layoutInfo {
@@ -446,6 +537,124 @@ vk::Format VulkanInterface::findSupportedFormat(
 		vk::FormatFeatureFlagBits::eDepthStencilAttachment
 	);
 }
+void VulkanInterface::clearImage(vk::Image& image, vk::ImageLayout imageLayout) {
+	auto commandBuffer {beginSingleTimeCommands()};
+
+	vk::ClearColorValue clearColor {0.0f, 0.0f, 0.0f, 0.0f};
+	vk::ImageSubresourceRange subresourceRange {
+		.aspectMask = vk::ImageAspectFlagBits::eColor,
+		.baseMipLevel = 0,
+		.levelCount = 1,
+		.baseArrayLayer = 0,
+		.layerCount = 1
+	};
+	commandBuffer->clearColorImage(image, imageLayout, clearColor, subresourceRange);
+	endSingleTimeCommands(*commandBuffer);
+}
+void VulkanInterface::computeTangents(
+	const std::vector<glm::vec3>& positions,
+	const std::vector<glm::vec3>& normals,
+	const std::vector<glm::vec2>& texCoords,
+	const std::vector<uint32_t>& indices,
+	int indexStart,
+	int indexCount,
+	int vertexOffset,
+	std::vector<glm::vec4>& tangentReturn
+) const {
+	struct MikkTSpaceData {
+		const std::vector<glm::vec3>& positions {};
+		const std::vector<glm::vec3>& normals {};
+		const std::vector<glm::vec2>& texCoords {};
+		const std::vector<uint32_t>& indices {};
+
+		int indexStart {};
+		int indexCount {};
+		int vertexOffset {};
+
+		std::vector<glm::vec4>& tangentReturn;
+	};
+
+	MikkTSpaceData data {
+		.positions = positions,
+		.normals = normals,
+		.texCoords = texCoords,
+		.indices = indices,
+		.indexStart = indexStart,
+		.indexCount = indexCount,
+		.vertexOffset = vertexOffset,
+		.tangentReturn = tangentReturn
+	};
+
+	SMikkTSpaceInterface interface {
+		.m_getNumFaces = [](const SMikkTSpaceContext* pContext) -> int {
+			const MikkTSpaceData& data = *static_cast<MikkTSpaceData*>(pContext->m_pUserData);
+			return data.indexCount / 3;
+		},
+		.m_getNumVerticesOfFace = [](const SMikkTSpaceContext* pContext, const int iFace) -> int {
+			return 3;
+		},
+		.m_getPosition = [](const SMikkTSpaceContext* pContext,
+							float fvPosOut[],
+							const int iFace,
+							const int iVert) -> void {
+			const MikkTSpaceData& data = *static_cast<MikkTSpaceData*>(pContext->m_pUserData);
+			int indexOfIndex = data.indexStart + iFace * 3;
+			indexOfIndex += iVert;
+			int index = data.indices[indexOfIndex];
+			glm::vec3 position {data.positions[index + data.vertexOffset]};
+			fvPosOut[0] = position.x;
+			fvPosOut[1] = position.y;
+			fvPosOut[2] = position.z;
+		},
+		.m_getNormal = [](const SMikkTSpaceContext* pContext,
+						  float fvPosOut[],
+						  const int iFace,
+						  const int iVert) -> void {
+			const MikkTSpaceData& data = *static_cast<MikkTSpaceData*>(pContext->m_pUserData);
+			int indexOfIndex = data.indexStart + iFace * 3;
+			indexOfIndex += iVert;
+			int index = data.indices[indexOfIndex];
+			glm::vec3 normal {data.normals[index + data.vertexOffset]};
+			fvPosOut[0] = normal.x;
+			fvPosOut[1] = normal.y;
+			fvPosOut[2] = normal.z;
+		},
+		.m_getTexCoord = [](const SMikkTSpaceContext* pContext,
+							float fvPosOut[],
+							const int iFace,
+							const int iVert) -> void {
+			const MikkTSpaceData& data = *static_cast<MikkTSpaceData*>(pContext->m_pUserData);
+			int indexOfIndex = data.indexStart + iFace * 3;
+			indexOfIndex += iVert;
+			int index = data.indices[indexOfIndex];
+			glm::vec2 texCoord {data.texCoords[index + data.vertexOffset]};
+			fvPosOut[0] = texCoord.x;
+			fvPosOut[1] = texCoord.y;
+		},
+		.m_setTSpace = [](const SMikkTSpaceContext* pContext,
+						  const float fvTangent[],
+						  const float fvBiTangent[],
+						  const float fMagS,
+						  const float fMagT,
+						  const tbool bIsOrientationPreserving,
+						  const int iFace,
+						  const int iVert) -> void {
+			const MikkTSpaceData& data = *static_cast<MikkTSpaceData*>(pContext->m_pUserData);
+			int indexOfIndex = data.indexStart + iFace * 3;
+			indexOfIndex += iVert;
+			int index = data.indices[indexOfIndex];
+			data.tangentReturn[index + data.vertexOffset].x = fvTangent[0];
+			data.tangentReturn[index + data.vertexOffset].y = fvTangent[1];
+			data.tangentReturn[index + data.vertexOffset].z = fvTangent[2];
+			data.tangentReturn[index + data.vertexOffset].w =
+				bIsOrientationPreserving ? 1.0 : (-1.0);
+		}
+	};
+	SMikkTSpaceContext context {
+		.m_pInterface = &interface, .m_pUserData = static_cast<void*>(&data)
+	};
+	genTangSpaceDefault(&context);
+} // compute tangents for a single sub mesh
 
 // draw helper functions
 void VulkanInterface::recreateSwapChain() {
@@ -464,7 +673,7 @@ void VulkanInterface::recreateSwapChain() {
 	createSwapChain();
 	createDepthResources();
 }
-void VulkanInterface::transition_image_layout(
+void VulkanInterface::transitionImageLayoutPipeline(
 	vk::Image image,
 	vk::ImageLayout old_layout,
 	vk::ImageLayout new_layout,
@@ -537,22 +746,6 @@ void VulkanInterface::updateBuffers() {
 		0,
 		sizeof(ModelTransformBufferObject) * modelTransforms.size()
 	);
-	if (m_drawDdgiProbes) {
-		std::vector<ModelTransformBufferObject> ddgiProbeTransformations {};
-		ddgiProbeTransformations.reserve(m_ddgiProbePositions.size());
-		for (const auto& position: m_ddgiProbePositions) {
-			ddgiProbeTransformations.emplace_back(
-				glm::translate(position) * glm::scale(glm::vec3 {0.1, 0.1, 0.1})
-			);
-		}
-		vmaCopyMemoryToAllocation(
-			m_allocator,
-			ddgiProbeTransformations.data(),
-			m_modelTransformAllocations[m_frameIndex],
-			sizeof(ModelTransformBufferObject) * modelTransforms.size(),
-			sizeof(ModelTransformBufferObject) * m_ddgiProbePositions.size()
-		);
-	}
 	if (m_currentScene->handleCameraMovement(DDGI_PROBE_DIMENSIONS)) {
 		restructureDdgiProbes();
 		std::vector<DrawIndirectCommand> drawCommands {};
@@ -590,17 +783,40 @@ void VulkanInterface::updateBuffers() {
 			sizeof(metaData[0]) * metaData.size()
 		);
 
-		DrawIndirectCommand probeDrawCommand {
-			m_meshes[1].subMeshes[0].indexCount,
-			static_cast<uint32_t>(m_ddgiProbePositions.size()),
-			m_meshes[1].subMeshes[0].indexStart,
-			static_cast<int32_t>(m_meshes[1].subMeshes[0].vertexOffset),
-			static_cast<uint32_t>(m_currentScene->getModelInstanceTransforms().size())
-		};
-		SubMeshMetadataBufferObject probeMetaData {
-			m_meshes[1].subMeshes[0].materialIndex, SubMeshMetadataBufferObject::PROBE
-		};
+		vmaCopyMemoryToAllocation(
+			m_allocator,
+			m_ddgiProbePositions.data(),
+			m_ddgiProbePositionAllocations[m_frameIndex],
+			0,
+			sizeof(m_ddgiProbePositions[0]) * m_ddgiProbePositions.size()
+		);
+
 		if (m_drawDdgiProbes) {
+			std::vector<ModelTransformBufferObject> ddgiProbeTransformations {};
+			ddgiProbeTransformations.reserve(m_ddgiProbePositions.size());
+			for (const auto& position: m_ddgiProbePositions) {
+				ddgiProbeTransformations.emplace_back(
+					glm::translate(position) * glm::scale(glm::vec3 {0.1, 0.1, 0.1})
+				);
+			}
+			DrawIndirectCommand probeDrawCommand {
+				m_meshes[DDGI_MODEL_INDEX].subMeshes[0].indexCount,
+				static_cast<uint32_t>(m_ddgiProbePositions.size()),
+				m_meshes[DDGI_MODEL_INDEX].subMeshes[0].indexStart,
+				static_cast<int32_t>(m_meshes[DDGI_MODEL_INDEX].subMeshes[0].vertexOffset),
+				static_cast<uint32_t>(m_currentScene->getModelInstanceTransforms().size())
+			};
+			SubMeshMetadataBufferObject probeMetaData {
+				m_meshes[DDGI_MODEL_INDEX].subMeshes[0].materialIndex,
+				SubMeshMetadataBufferObject::PROBE
+			};
+			vmaCopyMemoryToAllocation(
+				m_allocator,
+				ddgiProbeTransformations.data(),
+				m_modelTransformAllocations[m_frameIndex],
+				sizeof(ModelTransformBufferObject) * modelTransforms.size(),
+				sizeof(ModelTransformBufferObject) * m_ddgiProbePositions.size()
+			);
 			vmaCopyMemoryToAllocation(
 				m_allocator,
 				&probeDrawCommand,
@@ -751,7 +967,6 @@ void VulkanInterface::updateTlas() {
 	}
 }
 void VulkanInterface::restructureDdgiProbes() {
-
 	const DDGIProbeBounds& bounds {m_currentScene->getDdgiProbeBounds()};
 	for (int x {bounds.xLower}; x <= bounds.xUpper; ++x) {
 		for (int y {bounds.yLower}; y <= bounds.yUpper; ++y) {

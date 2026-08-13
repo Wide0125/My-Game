@@ -22,7 +22,7 @@ float2 intersectionUV(uint instanceID, uint primIndex, float2 barycentrics) {
 }
 
 VSOutput intersectionVSOutput(
-	uint instanceID, uint primIndex, float2 barycentrics, float3x4 o2w, float4x3 w2o
+	uint instanceID, uint primIndex, float2 barycentrics, float4x3 o2w, float4x3 w2o
 ) {
 	uint indexOffset = tlasLut[instanceID].indexStart;
 	uint vertexOffset = tlasLut[instanceID].vertexOffset;
@@ -31,9 +31,9 @@ VSOutput intersectionVSOutput(
 	uint i1 = indices[indexOffset + (primIndex * 3 + 1)];
 	uint i2 = indices[indexOffset + (primIndex * 3 + 2)];
 
-	VSInput vertex0 = vertices[i0];
-	VSInput vertex1 = vertices[i1];
-	VSInput vertex2 = vertices[i2];
+	VSInput vertex0 = vertices[i0 + vertexOffset];
+	VSInput vertex1 = vertices[i1 + vertexOffset];
+	VSInput vertex2 = vertices[i2 + vertexOffset];
 
 	float w0 = 1.0 - barycentrics.x - barycentrics.y;
 	float w1 = barycentrics.x;
@@ -42,19 +42,17 @@ VSOutput intersectionVSOutput(
 	VSOutput output;
 
 	output.worldPosition =
-		mul(o2w,
-			float4(vertex0.position * w0 + vertex1.position * w1 + vertex2.position * w2, 1.0));
+		mul(o2w, vertex0.position * w0 + vertex1.position * w1 + vertex2.position * w2).xyz;
 	output.normal =
 		mul(float4(vertex0.normal * w0 + vertex1.normal * w1 + vertex2.normal * w2, 0), w2o);
 	output.color = vertex0.color * w0 + vertex1.color * w1 + vertex2.color * w2;
 	output.UV = vertex0.UV * w0 + vertex1.UV * w1 + vertex2.UV * w2;
+	float3x3 o2wLinear = float3x3(o2w);
 	output.tangent.xyz =
-		mul(o2w,
-			float4((vertex0.tangent * w0 + vertex1.tangent * w1 + vertex2.tangent * w2).xyz, 0));
+		mul(o2wLinear, (vertex0.tangent * w0 + vertex1.tangent * w1 + vertex2.tangent * w2).xyz);
 	output.tangent.w = vertex0.tangent.w;
 	output.materialIndex = tlasLut[instanceID].materialIndex;
 	output.meshType = MeshType::NORMAL;
-
 	return output;
 }
 
@@ -154,7 +152,7 @@ float3 inShadow(
 };
 
 float3 irradianceTexelFetch(float3 vector, int probeIndex) {
-	int2 texelID = { (probeIndex % 64) * 8 + 1, (probeIndex / 64) * 8 + 1 };
+	float2 texelID = { (probeIndex % 64) * 8 + 1, (probeIndex / 64) * 8 + 1 };
 
 	float3 octaVector = vector / (abs(vector.x) + abs(vector.y) + abs(vector.z));
 
@@ -169,12 +167,15 @@ float3 irradianceTexelFetch(float3 vector, int probeIndex) {
 	}
 	UV *= 3;
 	UV += 3;
-	int2 texelUV = int2(floor(UV));
-	return ddgiIrradianceSampler.SampleLevelZero((texelID + texelUV) / 512).rgb;
+	float3 returnColor = ddgiIrradianceSampler.SampleLevelZero((texelID + UV) / 512).rgb;
+	if (any(isnan(returnColor))) {
+		returnColor = float3(0);
+	}
+	return returnColor;
 }
 
 float2 depthTexelFetch(float3 vector, int probeIndex) {
-	int2 texelID = { (probeIndex % 64) * 16 + 1, (probeIndex / 64) * 16 + 1 };
+	float2 texelID = { (probeIndex % 64) * 16 + 1, (probeIndex / 64) * 16 + 1 };
 
 	float3 octaVector = vector / (abs(vector.x) + abs(vector.y) + abs(vector.z));
 
@@ -189,8 +190,26 @@ float2 depthTexelFetch(float3 vector, int probeIndex) {
 	}
 	UV *= 7;
 	UV += 7;
-	int2 texelUV = int2(floor(UV));
-	return ddgiDepthSampler.SampleLevelZero((texelID + texelUV) / 1024).rg;
+	return ddgiDepthSampler.SampleLevelZero((texelID + UV) / 1024).rg /
+		   ddgiDepthSampleCountTexture.Load(int2(texelID + UV));
+}
+
+uint probeCoordinatesToIndex(int x, int y, int z) {
+	float3 cameraPosition = vpTransform.cameraPosition;
+	int newX = (x + DDGI_PROBE_DIMENSIONS.x / 2) % DDGI_PROBE_DIMENSIONS.x;
+	if (newX < 0) {
+		newX += DDGI_PROBE_DIMENSIONS.x;
+	}
+	int newY = (y + DDGI_PROBE_DIMENSIONS.y / 2) % DDGI_PROBE_DIMENSIONS.y;
+	if (newY < 0) {
+		newY += DDGI_PROBE_DIMENSIONS.y;
+	}
+	int newZ = (z + DDGI_PROBE_DIMENSIONS.z / 2) % DDGI_PROBE_DIMENSIONS.z;
+	if (newZ < 0) {
+		newZ += DDGI_PROBE_DIMENSIONS.z;
+	}
+	return newX * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z +
+		   newY * DDGI_PROBE_DIMENSIONS.z + newZ;
 }
 
 float4 getPointRadiance(
@@ -209,9 +228,8 @@ float4 getPointRadiance(
 	float3 F0 = float3(0.04);
 	F0 = lerp(F0, baseColor.rgb, metallic);
 
-	float3 Lo = float3(0.0);
+	float3 Lo = float3(0);
 
-	float3 kD;
 	for (int i = 0; i < vpTransform.lightCount; ++i) {
 		LightBuffer currLight = lights[i];
 		float3 L;
@@ -241,7 +259,7 @@ float4 getPointRadiance(
 			float3 specular = numerator / denominator;
 
 			float3 kS = F;
-			kD = float3(1.0) - kS;
+			float3 kD = float3(1.0) - kS;
 			kD *= 1.0 - metallic;
 
 			float NdotL = max(dot(N, L), 0.0);
@@ -261,23 +279,24 @@ float4 getPointRadiance(
 
 					float3 dir = ddgiProbePositions[probeIndex] - worldPosition;
 					float r = length(dir);
-					dir *= 1 / r;
+					dir /= r;
 
 					float weight = (dot(dir, N) + 1) * 0.5;
 
-					float3 distances = abs(ddgiProbePositions[probeIndex] - worldPosition);
-					weight *= (1 - (x - lowerBounds.x) - distances.x) *
-							  (1 - (y - lowerBounds.y) - distances.y) *
-							  (1 - (z - lowerBounds.z) - distances.z);
+					float3 distances = (worldPosition - lowerBounds);
+					weight *= (1 - (x - lowerBounds.x) - (lowerBounds.x - x) * distances.x) *
+							  (1 - (y - lowerBounds.y) - (lowerBounds.x - x) * distances.y) *
+							  (1 - (z - lowerBounds.z) - (lowerBounds.x - x) * distances.z);
 
 					float2 temp = depthTexelFetch(-dir, probeIndex);
 					float mean = temp.r;
 					float mean2 = temp.g;
-					if (r > mean) {
-						float variance = abs(pow(mean, 2) - mean2);
-						weight *= variance / (variance + pow(r - mean, 2));
-					}
-					Lo += kD * (baseColor.rgb / PI) * irradianceTexelFetch(N, probeIndex);
+					// if (r > mean) {
+					// 	float variance = abs(pow(mean, 2) - mean2);
+					// 	weight *= variance / (variance + pow(r - mean, 2));
+					// }
+
+					Lo += (baseColor.rgb / PI) * irradianceTexelFetch(N, probeIndex) * weight;
 				}
 			}
 		}

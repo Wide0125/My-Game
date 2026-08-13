@@ -33,6 +33,9 @@ float4 fragMain(VSOutput input) : SV_TARGET {
 			textures[currMaterial.normalTextureIndex].Sample(input.UV).xyz * 2.0 - 1.0;
 		N = normalize(mul(mappedNormal, TBN));
 	}
+	if (any(isnan(N))) {
+		N = { 0, 0, 1 };
+	}
 
 	float4 baseColor = currMaterial.baseColorFactor;
 	if (currMaterial.baseColorTextureIndex != UINT32_MAX) {
@@ -57,6 +60,14 @@ float4 fragMain(VSOutput input) : SV_TARGET {
 		ao *= textures[currMaterial.occlusionTextureIndex].Sample(input.UV).r;
 	}
 	return getPointRadiance(
-		input.worldPosition, N, input.UV, baseColor, metallic, roughness, ao, currMaterial.alphaMode, vpTransform.cameraPosition
+		input.worldPosition,
+		N,
+		input.UV,
+		baseColor,
+		metallic,
+		roughness,
+		ao,
+		currMaterial.alphaMode,
+		vpTransform.cameraPosition
 	);
 }

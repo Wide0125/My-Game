@@ -166,16 +166,29 @@ void VulkanInterface::createLogicalDevice() {
 		vk::PhysicalDeviceRayQueryFeaturesKHR>
 		featureChain {
 			{.features =
-				 {.multiDrawIndirect = true,
-				  .drawIndirectFirstInstance = true,
-				  .samplerAnisotropy = true}},
-			{.shaderDrawParameters = true},
-			{.descriptorIndexing = true,
+				 vk::PhysicalDeviceFeatures {
+					 .multiDrawIndirect = true,
+					 .drawIndirectFirstInstance = true,
+					 .samplerAnisotropy = true,
+					 .vertexPipelineStoresAndAtomics = true,
+					 .fragmentStoresAndAtomics = true,
+					 .shaderInt64 = true,
+					 .shaderInt16 = true
+				 }},
+			{.storageBuffer16BitAccess = true, .shaderDrawParameters = true},
+			{.storageBuffer8BitAccess = true,
+			 .shaderInt8 = true,
+			 .descriptorIndexing = true,
 			 .shaderSampledImageArrayNonUniformIndexing = true,
 			 .runtimeDescriptorArray = true,
 			 .scalarBlockLayout = true,
-			 .bufferDeviceAddress = true},
-			{.synchronization2 = true, .dynamicRendering = true},
+			 .timelineSemaphore = true,
+			 .bufferDeviceAddress = true,
+			 .vulkanMemoryModel = true,
+			 .vulkanMemoryModelDeviceScope = true},
+			{.shaderDemoteToHelperInvocation = true,
+			 .synchronization2 = true,
+			 .dynamicRendering = true},
 			{.extendedDynamicState = true},
 			{.accelerationStructure = true},
 			{.rayQuery = true}

@@ -3,15 +3,16 @@ import bindings;
 [shader("compute")]
 [numthreads(6, 6, 1)]
 void computeMain(uint3 probeID: SV_GroupID, uint3 localTexelUV: SV_GroupThreadID) {
-	static groupshared Atomic<uint> counter;
-
+	static groupshared uint counter;
+	static groupshared int probeIndex;
+	static groupshared int2 texelID;
 	if (localTexelUV.x == 0 && localTexelUV.y == 0) {
 		counter = 0;
+		probeIndex = probeID.x * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z +
+					 probeID.y * DDGI_PROBE_DIMENSIONS.z + probeID.z;
+		texelID = { (probeIndex % 64) * 8 + 1, (probeIndex / 64) * 8 + 1 };
 	}
 	GroupMemoryBarrierWithGroupSync();
-
-	int probeIndex = probeID.x * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z +
-					 probeID.y * DDGI_PROBE_DIMENSIONS.z + probeID.z;
 
 	float texelX = localTexelUV.x - 2.5;
 	float texelY = localTexelUV.y - 2.5;
@@ -29,65 +30,67 @@ void computeMain(uint3 probeID: SV_GroupID, uint3 localTexelUV: SV_GroupThreadID
 	for (int x = 0; x < RAY_COUNT; ++x) {
 		float dotProduct = dot(texelVector, ddgiProbeSamples[x]);
 		if (dotProduct > 0) {
-			irradiance += ddgiRadianceTransmissionTexture.Load( { x, probeIndex }) * dotProduct;
+			irradiance += ddgiRadianceTransmissionTexture.Load( { x, probeIndex }) * dotProduct *
+						  ((4 * PI) / 192);
 		}
 	}
-	int2 texelID = { (probeIndex % 64) * 8 + 1, (probeIndex / 64) * 8 + 1 };
 	float3 oldIrradiance = ddgiIrradianceTexture.Load(texelID + localTexelUV.xy);
-	ddgiIrradianceTexture.Store(texelID + localTexelUV.xy, lerp(oldIrradiance, irradiance, 1 - HYSTERESIS));
+	ddgiIrradianceTexture.Store(
+		texelID + localTexelUV.xy, oldIrradiance * HYSTERESIS + irradiance * (1 - HYSTERESIS)
+	);
 
-	if (counter.increment() == 35) {
+	int previousValue;
+	InterlockedAdd(counter, 1, previousValue);
+	if (previousValue == 35) {
 		for (int i = 0; i < 3; ++i) {
-			ddgiDepthTexture.Store(
-				texelID + int2(6, i), ddgiDepthTexture.Load(texelID + int2(5, 5 - i))
+			ddgiIrradianceTexture.Store(
+				texelID + int2(6, i), ddgiIrradianceTexture.Load(texelID + int2(5, 5 - i))
 			);
 		}
 		for (int i = 0; i < 3; ++i) {
-			ddgiDepthTexture.Store(
-				texelID + int2(6, 3 + i), ddgiDepthTexture.Load(texelID + int2(4, 2 - i))
+			ddgiIrradianceTexture.Store(
+				texelID + int2(6, 3 + i), ddgiIrradianceTexture.Load(texelID + int2(5, 2 - i))
 			);
 		}
 		for (int i = 0; i < 3; ++i) {
-			ddgiDepthTexture.Store(
-				texelID + int2(-1, i), ddgiDepthTexture.Load(texelID + int2(0, 5 - i))
+			ddgiIrradianceTexture.Store(
+				texelID + int2(-1, i), ddgiIrradianceTexture.Load(texelID + int2(0, 5 - i))
 			);
 		}
 		for (int i = 0; i < 3; ++i) {
-			ddgiDepthTexture.Store(
-				texelID + int2(-1, 3 + i), ddgiDepthTexture.Load(texelID + int2(0, 2 - i))
+			ddgiIrradianceTexture.Store(
+				texelID + int2(-1, 3 + i), ddgiIrradianceTexture.Load(texelID + int2(0, 2 - i))
 			);
 		}
 		for (int i = 0; i < 3; ++i) {
-			ddgiDepthTexture.Store(
-				texelID + int2(i, 6), ddgiDepthTexture.Load(texelID + int2(5 - i, 5))
+			ddgiIrradianceTexture.Store(
+				texelID + int2(i, 6), ddgiIrradianceTexture.Load(texelID + int2(5 - i, 5))
 			);
 		}
 		for (int i = 0; i < 3; ++i) {
-			ddgiDepthTexture.Store(
-				texelID + int2(3 + i, 6), ddgiDepthTexture.Load(texelID + int2(2 - i, 5))
+			ddgiIrradianceTexture.Store(
+				texelID + int2(3 + i, 6), ddgiIrradianceTexture.Load(texelID + int2(2 - i, 5))
 			);
 		}
 		for (int i = 0; i < 3; ++i) {
-			ddgiDepthTexture.Store(
-				texelID + int2(i, -1), ddgiDepthTexture.Load(texelID + int2(5 - i, 0))
+			ddgiIrradianceTexture.Store(
+				texelID + int2(i, -1), ddgiIrradianceTexture.Load(texelID + int2(5 - i, 0))
 			);
 		}
 		for (int i = 0; i < 3; ++i) {
-			ddgiDepthTexture.Store(
-				texelID + int2(3 + i, -1), ddgiDepthTexture.Load(texelID + int2(2 - i, 0))
+			ddgiIrradianceTexture.Store(
+				texelID + int2(3 + i, -1), ddgiIrradianceTexture.Load(texelID + int2(2 - i, 0))
 			);
 		}
-		ddgiDepthTexture.Store(
-			texelID + int2(6, 6), ddgiDepthTexture.Load(texelID)
+		ddgiIrradianceTexture.Store(texelID + int2(6, 6), ddgiIrradianceTexture.Load(texelID));
+		ddgiIrradianceTexture.Store(
+			texelID + int2(-1, -1), ddgiIrradianceTexture.Load(texelID + int2(5, 5))
 		);
-		ddgiDepthTexture.Store(
-			texelID + int2(-1, -1), ddgiDepthTexture.Load(texelID + int2(5, 5))
+		ddgiIrradianceTexture.Store(
+			texelID + int2(6, -1), ddgiIrradianceTexture.Load(texelID + int2(0, 5))
 		);
-		ddgiDepthTexture.Store(
-			texelID + int2(6, -1), ddgiDepthTexture.Load(texelID + int2(0, 5))
-		);
-		ddgiDepthTexture.Store(
-			texelID + int2(-1, 6), ddgiDepthTexture.Load(texelID + int2(5, 0))
+		ddgiIrradianceTexture.Store(
+			texelID + int2(-1, 6), ddgiIrradianceTexture.Load(texelID + int2(5, 0))
 		);
 	}
 }
