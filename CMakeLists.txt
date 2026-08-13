@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.30)
 
-project(MyGame)
+project(MyGame C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -79,6 +79,7 @@ add_executable(${PROJECT_NAME}
   src/VulkanInterfaceLoadScene.cpp
   src/VulkanInterfaceHelpers.cpp
   src/VulkanInterfaceDraw.cpp
+  src/mikktspace.c
 )
 
 target_link_libraries(${PROJECT_NAME} Vulkan::cppm glfw glm::glm fastgltf KTX::ktx VulkanMemoryAllocator)
@@ -101,7 +102,7 @@ function(compile_shaders TARGET)
   )
   add_custom_command(
     OUTPUT ${SHADER_OUTPUT}
-    COMMAND ${SLANGC_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/src/${SHADER_SOURCES} -target spirv -profile spirv_1_4 -emit-spirv-directly -fvk-use-entrypoint-name -fvk-use-c-layout ${ENTRY_POINTS} -o ${SHADER_OUTPUT}
+    COMMAND ${SLANGC_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/src/${SHADER_SOURCES} -target spirv -profile spirv_1_6 -emit-spirv-directly -fvk-use-entrypoint-name -fvk-use-c-layout ${ENTRY_POINTS} -o ${SHADER_OUTPUT}
     WORKING_DIRECTORY ${SHADERS_DIR}
     DEPENDS ${SHADERS_DIR} src/${SHADER_SOURCES}
     COMMENT "Compiling Slang Shaders"
@@ -119,9 +120,4 @@ add_dependencies(${PROJECT_NAME} graphics_shader compute_ray_sample_shader compu
 target_compile_definitions(${PROJECT_NAME} PRIVATE
   SHADER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/shaders"
   SCENE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/scenes"
-)
-
-target_precompile_headers(${PROJECT_NAME} PRIVATE
-  <vulkan/vulkan.hpp>
-  <vulkan/vulkan_raii.hpp>
 )
