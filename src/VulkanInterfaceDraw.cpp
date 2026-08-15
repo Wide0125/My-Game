@@ -101,6 +101,15 @@ void VulkanInterface::drawFrame() {
 		DDGI_PROBE_DIMENSIONS.x, DDGI_PROBE_DIMENSIONS.y, DDGI_PROBE_DIMENSIONS.z
 	);
 
+	commandBuffer.bindPipeline(
+		vk::PipelineBindPoint::eCompute, m_computeProbeIrradianceClearPipeline
+	);
+	commandBuffer.dispatch(m_ddgiClearIndices.size(), 1, 1);
+	commandBuffer.bindPipeline(
+		vk::PipelineBindPoint::eCompute, m_computeProbeDepthClearPipeline
+	);
+	commandBuffer.dispatch(m_ddgiClearIndices.size(), 1, 1);
+
 	m_pipelineMemoryBarrier = {
 		.srcStageMask = vk::PipelineStageFlagBits2::eComputeShader |
 						vk::PipelineStageFlagBits2::eFragmentShader,

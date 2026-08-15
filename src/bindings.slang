@@ -17,11 +17,14 @@ struct VSOutput {
 	float4 tangent : TANGENT;
 	uint materialIndex;
 	MeshType meshType;
+	float3 probeOrigin;
+	uint probeIndex;
 };
 
 struct ModelTransformBuffer {
 	float4x4 model;
 	float3x3 normal;
+	uint probeIndex;
 };
 
 struct DrawCallBuffer {
@@ -129,7 +132,7 @@ RWTexture2D<float3> ddgiIrradianceTexture;
 [vk::binding(18, 0)]
 RWTexture2D<float2> ddgiDepthTexture;
 [vk::image_format("r32ui")]
-[vk::binding(19, 0)] 
+[vk::binding(19, 0)]
 RWTexture2D<uint> ddgiDepthSampleCountTexture;
 
 static const float EPSILON = 0.01;

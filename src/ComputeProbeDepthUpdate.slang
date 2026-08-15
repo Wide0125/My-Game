@@ -14,27 +14,27 @@ void computeMain(uint3 probeID: SV_GroupID, uint3 localTexelUV: SV_GroupThreadID
 	}
 	GroupMemoryBarrierWithGroupSync();
 
-	uint previousSampleCount = ddgiDepthSampleCountTexture.Load(texelID + localTexelUV.xy);
-
-	float texelX = localTexelUV.x - 2.5;
-	float texelY = localTexelUV.y - 2.5;
-	float3 texelVector = { texelX / 3, texelY / 3 };
-	if (abs(texelX) + abs(texelY) > 3) {
-		texelVector.z = -(1 - abs(texelVector.x) - abs(texelVector.y));
-	} else if (abs(texelX) + abs(texelY) == 3) {
-		texelVector.z = 0;
+	float texelX = localTexelUV.x - 6.5;
+	float texelY = localTexelUV.y - 6.5;
+	float3 texelVector = { texelX / 7, texelY / 7 };
+	if (abs(texelX) + abs(texelY) > 7) {
+		texelVector.z = -(1.f - abs(texelVector.x) - abs(texelVector.y));
+		texelVector.x = (1.f - abs(texelVector.y)) * sign(texelVector.x);
+		texelVector.y = (1.f - abs(texelVector.x)) * sign(texelVector.y);
+	} else if (abs(texelX) + abs(texelY) == 7) {
+		texelVector.z = 0.f;
 	} else {
-		texelVector.z = 1 - abs(texelVector.x) - abs(texelVector.y);
+		texelVector.z = 1.f - abs(texelVector.x) - abs(texelVector.y);
 	}
 	texelVector = normalize(texelVector);
 
-	int index = RAY_COUNT - int((texelVector.z + 1) / (2.0 / RAY_COUNT)) - 1;
+	int index = RAY_COUNT - int((texelVector.z + 1) / (2.f / RAY_COUNT)) - 4;
 
 	float distance = 0;
 	float distance2 = 0;
 	int sampleCount = 0;
 	int status = 0;
-	for (int currIndex = index; currIndex < index + 2; ++currIndex) {
+	for (int currIndex = 0; currIndex <= RAY_COUNT; ++currIndex) {
 		float dot = dot(texelVector, ddgiProbeSamples[currIndex]);
 		if (dot >= 0.99999326) {
 			++status;
@@ -42,18 +42,18 @@ void computeMain(uint3 probeID: SV_GroupID, uint3 localTexelUV: SV_GroupThreadID
 			distance += currDistance;
 			distance2 += currDistance * currDistance;
 			++sampleCount;
-		} else if (status == 1) {
+		} else if (status > 0) {
 			break;
 		}
 	}
-	if (previousSampleCount + sampleCount <= UINT32_MAX) {
+	if (sampleCount > 0) {
+		distance /= sampleCount;
+		distance2 /= sampleCount;
 		float2 previousDistances = ddgiDepthTexture.Load(texelID + localTexelUV.xy);
 		ddgiDepthTexture.Store(
 			texelID + localTexelUV.xy,
-			{ distance + previousDistances.x, distance2 + previousDistances.y }
-		);
-		ddgiDepthSampleCountTexture.Store(
-			texelID + localTexelUV.xy, sampleCount + previousSampleCount
+			{ previousDistances.x * HYSTERESIS + distance * (1 - HYSTERESIS),
+			  previousDistances.y * HYSTERESIS + distance2 * (1 - HYSTERESIS) }
 		);
 	}
 

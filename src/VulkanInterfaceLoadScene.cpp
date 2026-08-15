@@ -402,6 +402,15 @@ void VulkanInterface::createDdgiProbes() {
 			m_ddgiProbeBoundsBuffers[frameIndex],
 			m_ddgiProbeBoundsAllocations[frameIndex]
 		);
+		createBuffer(
+			sizeof(uint32_t) * DDGI_PROBE_DIMENSIONS.x * DDGI_PROBE_DIMENSIONS.y *
+				DDGI_PROBE_DIMENSIONS.z,
+			vk::BufferUsageFlagBits::eUniformBuffer,
+			VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+				VMA_ALLOCATION_CREATE_MAPPED_BIT,
+			m_ddgiClearIndexBuffers[frameIndex],
+			m_ddgiClearIndexAllocations[frameIndex]
+		);
 	}
 	createImage(
 		256 * 2,
@@ -512,6 +521,9 @@ void VulkanInterface::createDdgiProbes() {
 		.maxLod = vk::LodClampNone
 	};
 	m_ddgiTextureSampler = {m_device, ddgiSamplerInfo};
+	m_ddgiClearIndices.reserve(
+		DDGI_PROBE_DIMENSIONS.x * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z
+	);
 }
 
 void VulkanInterface::createAccelerationStructures() {
@@ -1408,4 +1420,44 @@ void VulkanInterface::createComputePipelines() {
 	};
 	m_computeProbeDepthUpdatePipeline =
 		vk::raii::Pipeline {m_device, nullptr, computeProbeDepthUpdatePipelineInfo};
+
+	vk::raii::ShaderModule computeProbeIrradianceClearShaderModule {
+		createShaderModule(readFile(SHADER_PATH "/ComputeProbeIrradianceClear.spv"))
+	};
+	vk::PipelineShaderStageCreateInfo computeProbeIrradianceClearShaderStageInfo {
+		.stage = vk::ShaderStageFlagBits::eCompute,
+		.module = computeProbeIrradianceClearShaderModule,
+		.pName = "computeMain"
+	};
+	vk::PipelineLayoutCreateInfo computeProbeIrradianceClearPipelineLayoutInfo {
+		.setLayoutCount = 1, .pSetLayouts = &*m_descriptorSetLayout
+	};
+	m_computeProbeIrradianceClearPipelineLayout = {m_device, computeProbeIrradianceClearPipelineLayoutInfo};
+	vk::ComputePipelineCreateInfo computeProbeIrradianceClearPipelineInfo {
+		.stage = computeProbeIrradianceClearShaderStageInfo,
+		.layout = m_computeProbeIrradianceClearPipelineLayout
+	};
+	m_computeProbeIrradianceClearPipeline =
+		vk::raii::Pipeline {m_device, nullptr, computeProbeIrradianceClearPipelineInfo};
+
+	vk::raii::ShaderModule computeProbeDepthClearShaderModule {
+		createShaderModule(readFile(SHADER_PATH "/ComputeProbeDepthClear.spv"))
+	};
+	vk::PipelineShaderStageCreateInfo computeProbeDepthClearShaderStageInfo {
+		.stage = vk::ShaderStageFlagBits::eCompute,
+		.module = computeProbeDepthClearShaderModule,
+		.pName = "computeMain"
+	};
+	vk::PipelineLayoutCreateInfo computeProbeDepthClearPipelineLayoutInfo {
+		.setLayoutCount = 1, .pSetLayouts = &*m_descriptorSetLayout
+	};
+	m_computeProbeDepthClearPipelineLayout = {
+		m_device, computeProbeDepthClearPipelineLayoutInfo
+	};
+	vk::ComputePipelineCreateInfo computeProbeDepthClearPipelineInfo {
+		.stage = computeProbeDepthClearShaderStageInfo,
+		.layout = m_computeProbeDepthClearPipelineLayout
+	};
+	m_computeProbeDepthClearPipeline =
+		vk::raii::Pipeline {m_device, nullptr, computeProbeDepthClearPipelineInfo};
 }

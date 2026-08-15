@@ -22,6 +22,7 @@ class Scene;
 struct ModelTransformBufferObject {
 	glm::mat4 modelTransform {};
 	glm::mat3 normalMatrix {};
+	uint32_t probeIndex {};
 };
 
 struct DrawCallBufferObject {
@@ -254,6 +255,10 @@ class VulkanInterface {
 	vk::raii::PipelineLayout m_computeProbeIrradianceUpdatePipelineLayout {nullptr};
 	vk::raii::Pipeline m_computeProbeDepthUpdatePipeline {nullptr};
 	vk::raii::PipelineLayout m_computeProbeDepthUpdatePipelineLayout {nullptr};
+	vk::raii::Pipeline m_computeProbeIrradianceClearPipeline {nullptr};
+	vk::raii::PipelineLayout m_computeProbeIrradianceClearPipelineLayout {nullptr};
+	vk::raii::Pipeline m_computeProbeDepthClearPipeline {nullptr};
+	vk::raii::PipelineLayout m_computeProbeDepthClearPipelineLayout {nullptr};
 
 	std::vector<vk::Buffer> m_blasBuffers {};
 	std::vector<VmaAllocation> m_blasAllocations {};
@@ -309,7 +314,10 @@ class VulkanInterface {
 	VmaAllocation m_ddgiDepthSampleCountAllocation {};
 	vk::raii::ImageView m_ddgiDepthSampleCountImageView {nullptr};
 
-	vk::ImageSubresourceRange m_ddgiTexturesClearRange {};
+	std::vector<uint32_t> m_ddgiClearIndices {};
+
+	std::array<vk::Buffer, MAX_FRAMES_IN_FLIGHT> m_ddgiClearIndexBuffers {};
+	std::array<VmaAllocation, MAX_FRAMES_IN_FLIGHT> m_ddgiClearIndexAllocations {};
 
 	vk::MemoryBarrier2 m_pipelineMemoryBarrier {};	// reusable memory barrier
 	vk::DependencyInfo m_pipelineDependencyInfo {}; // reusable dependency info

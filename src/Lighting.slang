@@ -159,8 +159,8 @@ float3 irradianceTexelFetch(float3 vector, int probeIndex) {
 	float2 UV;
 	if (vector.z < 0) {
 		UV = float2(
-			(1.0 - abs(octaVector.x)) * sign(octaVector.x),
-			(1.0 - abs(octaVector.y)) * sign(octaVector.y)
+			(1.0 - abs(octaVector.y)) * sign(octaVector.x),
+			(1.0 - abs(octaVector.x)) * sign(octaVector.y)
 		);
 	} else {
 		UV = octaVector.xy;
@@ -182,34 +182,93 @@ float2 depthTexelFetch(float3 vector, int probeIndex) {
 	float2 UV;
 	if (vector.z < 0) {
 		UV = float2(
-			(1.0 - abs(octaVector.x)) * sign(octaVector.x),
-			(1.0 - abs(octaVector.y)) * sign(octaVector.y)
+			(1.0 - abs(octaVector.y)) * sign(octaVector.x),
+			(1.0 - abs(octaVector.x)) * sign(octaVector.y)
 		);
 	} else {
 		UV = octaVector.xy;
 	}
 	UV *= 7;
 	UV += 7;
-	return ddgiDepthSampler.SampleLevelZero((texelID + UV) / 1024).rg /
-		   ddgiDepthSampleCountTexture.Load(int2(texelID + UV));
+	return ddgiDepthSampler.SampleLevelZero((texelID + UV) / 1024).rg;
 }
 
 uint probeCoordinatesToIndex(int x, int y, int z) {
-	float3 cameraPosition = vpTransform.cameraPosition;
-	int newX = (x + DDGI_PROBE_DIMENSIONS.x / 2) % DDGI_PROBE_DIMENSIONS.x;
+	int newX = (x + DDGI_PROBE_DIMENSIONS.x / 2 - 1) % DDGI_PROBE_DIMENSIONS.x;
 	if (newX < 0) {
 		newX += DDGI_PROBE_DIMENSIONS.x;
 	}
-	int newY = (y + DDGI_PROBE_DIMENSIONS.y / 2) % DDGI_PROBE_DIMENSIONS.y;
+	int newY = (y + DDGI_PROBE_DIMENSIONS.y / 2 - 1) % DDGI_PROBE_DIMENSIONS.y;
 	if (newY < 0) {
 		newY += DDGI_PROBE_DIMENSIONS.y;
 	}
-	int newZ = (z + DDGI_PROBE_DIMENSIONS.z / 2) % DDGI_PROBE_DIMENSIONS.z;
+	int newZ = (z + DDGI_PROBE_DIMENSIONS.z / 2 - 1) % DDGI_PROBE_DIMENSIONS.z;
 	if (newZ < 0) {
 		newZ += DDGI_PROBE_DIMENSIONS.z;
 	}
 	return newX * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z +
 		   newY * DDGI_PROBE_DIMENSIONS.z + newZ;
+}
+
+float3 getProbeIrradiance(float3 worldPosition, float3 N) {
+	int3 lowerBounds = int3(floor(worldPosition));
+	float3 distances = (worldPosition - lowerBounds);
+	float3 irradiance = float3(0);
+	float accumulatedWeights = 0.f;
+
+	float xWeight = (1 - distances.x);
+	for (int x = lowerBounds.x; x <= lowerBounds.x + 1; ++x) {
+		float yWeight = (1 - distances.y);
+		for (int y = lowerBounds.y; y <= lowerBounds.y + 1; ++y) {
+			float zWeight = (1 - distances.z);
+			for (int z = lowerBounds.z; z <= lowerBounds.z + 1; ++z) {
+				int probeIndex = probeCoordinatesToIndex(x, y, z);
+
+				float3 dir = ddgiProbePositions[probeIndex] - worldPosition;
+				float r = length(dir);
+				dir *= 1.0 / r;
+
+				float wrapShading = (dot(dir, N) + 1) * 0.5;
+				float weight = (wrapShading * wrapShading) + 0.2;
+
+				weight *= xWeight * yWeight * zWeight;
+
+				float2 filteredDistance = 2.f * depthTexelFetch(-dir, probeIndex).rg;
+				float chebyshevWeight = 1.f;
+				if (r > filteredDistance.x) // occluded
+				{
+					float variance =
+						abs((filteredDistance.x * filteredDistance.x) - filteredDistance.y);
+					float v = r - filteredDistance.x;
+					chebyshevWeight = variance / (variance + (v * v));
+
+					chebyshevWeight =
+						max((chebyshevWeight * chebyshevWeight * chebyshevWeight), 0.f);
+				}
+				weight *= max(0.05f, chebyshevWeight);
+				weight = max(0.000001f, weight);
+
+				const float crushThreshold = 0.2f;
+				if (weight < crushThreshold) {
+					weight *= (weight * weight) * (1.f / (crushThreshold * crushThreshold));
+				}
+
+				float3 probeIrradiance = irradianceTexelFetch(N, probeIndex).rgb;
+
+				irradiance += (weight * probeIrradiance);
+				accumulatedWeights += weight;
+				zWeight = distances.z;
+			}
+			yWeight = distances.y;
+		}
+		xWeight = distances.x;
+	}
+	if (accumulatedWeights == 0.f) {
+		return float3(0.f, 0.f, 0.f);
+	}
+	irradiance *= 1.f / accumulatedWeights;
+
+	return irradiance;
 }
 
 float4 getPointRadiance(
@@ -221,7 +280,8 @@ float4 getPointRadiance(
 	float roughness,
 	float ao,
 	MaterialBuffer::AlphaMode alphaMode,
-	float3 cameraPosition
+	float3 cameraPosition,
+	bool graphics = false
 ) {
 	float3 V = normalize(cameraPosition - worldPosition);
 
@@ -236,7 +296,7 @@ float4 getPointRadiance(
 		if (currLight.type == LightBuffer::LightType::point) {
 			L = normalize(currLight.position - worldPosition);
 		} else {
-			L = -normalize(currLight.direction);
+			L = normalize(currLight.direction);
 		}
 		float3 H = normalize(V + L);
 		float3 radiance;
@@ -270,36 +330,7 @@ float4 getPointRadiance(
 	if (worldPosition.x >= ddgiBounds.xLower && worldPosition.x <= ddgiBounds.xUpper &&
 		worldPosition.y >= ddgiBounds.yLower && worldPosition.y <= ddgiBounds.yUpper &&
 		worldPosition.z >= ddgiBounds.zLower && worldPosition.z <= ddgiBounds.zUpper) {
-		int3 lowerBounds = int3(floor(worldPosition));
-
-		for (int x = lowerBounds.x; x < lowerBounds.x + 1; ++x) {
-			for (int y = lowerBounds.y; y < lowerBounds.y + 1; ++y) {
-				for (int z = lowerBounds.z; z < lowerBounds.z + 1; ++z) {
-					int probeIndex = probeCoordinatesToIndex(x, y, z);
-
-					float3 dir = ddgiProbePositions[probeIndex] - worldPosition;
-					float r = length(dir);
-					dir /= r;
-
-					float weight = (dot(dir, N) + 1) * 0.5;
-
-					float3 distances = (worldPosition - lowerBounds);
-					weight *= (1 - (x - lowerBounds.x) - (lowerBounds.x - x) * distances.x) *
-							  (1 - (y - lowerBounds.y) - (lowerBounds.x - x) * distances.y) *
-							  (1 - (z - lowerBounds.z) - (lowerBounds.x - x) * distances.z);
-
-					float2 temp = depthTexelFetch(-dir, probeIndex);
-					float mean = temp.r;
-					float mean2 = temp.g;
-					// if (r > mean) {
-					// 	float variance = abs(pow(mean, 2) - mean2);
-					// 	weight *= variance / (variance + pow(r - mean, 2));
-					// }
-
-					Lo += (baseColor.rgb / PI) * irradianceTexelFetch(N, probeIndex) * weight;
-				}
-			}
-		}
+		Lo += baseColor.rgb * getProbeIrradiance(worldPosition, N);
 	}
 
 	float3 ambient = float3(0) * baseColor.rgb * ao;

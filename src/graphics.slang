@@ -16,11 +16,20 @@ vertMain(VSInput input, uint instanceID: SV_VulkanInstanceID, uint drawIndex: SV
 	output.tangent.w = input.tangent.w;
 	output.materialIndex = metadata[drawIndex].materialIndex;
 	output.meshType = metadata[drawIndex].type;
+	if (metadata[drawIndex].type == MeshType::PROBE) {
+		output.probeOrigin = mul(modelTransform[instanceID].model, float4(0, 0, 0, 1)).xyz;
+		output.probeIndex = modelTransform[instanceID].probeIndex;
+	}
 	return output;
 }
 
 [shader("fragment")]
 float4 fragMain(VSOutput input) : SV_TARGET {
+	if (input.meshType == MeshType::PROBE) {
+		float3 vector = input.worldPosition - input.probeOrigin;
+		return float4(irradianceTexelFetch(vector, input.probeIndex), 1);
+	}
+
 	MaterialBuffer currMaterial = materials[input.materialIndex];
 
 	float3 N = normalize(input.normal);
@@ -45,9 +54,6 @@ float4 fragMain(VSOutput input) : SV_TARGET {
 		baseColor.a < currMaterial.alphaCutoff) {
 		discard;
 	}
-	if (input.meshType == MeshType::PROBE) {
-		return baseColor;
-	}
 
 	float metallic = currMaterial.metallicRoughnessFactor.r;
 	float roughness = currMaterial.metallicRoughnessFactor.g;
@@ -68,6 +74,7 @@ float4 fragMain(VSOutput input) : SV_TARGET {
 		roughness,
 		ao,
 		currMaterial.alphaMode,
-		vpTransform.cameraPosition
+		vpTransform.cameraPosition,
+		true
 	);
 }

@@ -306,6 +306,11 @@ void VulkanInterface::cleanup() {
 			m_ddgiProbePositionBuffers[frameIndex],
 			m_ddgiProbePositionAllocations[frameIndex]
 		);
+		vmaDestroyBuffer(
+			m_allocator,
+			m_ddgiClearIndexBuffers[frameIndex],
+			m_ddgiClearIndexAllocations[frameIndex]
+		);
 	}
 	vmaDestroyImage(m_allocator, m_ddgiIrradianceImage, m_ddgiIrradianceAllocation);
 	vmaDestroyImage(m_allocator, m_ddgiDepthImage, m_ddgiDepthAllocation);
@@ -794,10 +799,12 @@ void VulkanInterface::updateBuffers() {
 		if (m_drawDdgiProbes) {
 			std::vector<ModelTransformBufferObject> ddgiProbeTransformations {};
 			ddgiProbeTransformations.reserve(m_ddgiProbePositions.size());
+			uint32_t probeIndex {0};
 			for (const auto& position: m_ddgiProbePositions) {
 				ddgiProbeTransformations.emplace_back(
-					glm::translate(position) * glm::scale(glm::vec3 {0.1, 0.1, 0.1})
+					glm::translate(position) * glm::scale(glm::vec3 {0.1, 0.1, 0.1}), glm::mat4{}, probeIndex
 				);
+				++probeIndex;
 			}
 			DrawIndirectCommand probeDrawCommand {
 				m_meshes[DDGI_MODEL_INDEX].subMeshes[0].indexCount,
@@ -840,6 +847,13 @@ void VulkanInterface::updateBuffers() {
 			m_ddgiProbeBoundsAllocations[m_frameIndex],
 			0,
 			sizeof(DDGIProbeBounds)
+		);
+		vmaCopyMemoryToAllocation(
+			m_allocator,
+			m_ddgiClearIndices.data(),
+			m_ddgiClearIndexAllocations[m_frameIndex],
+			0,
+			sizeof(uint32_t) * m_ddgiClearIndices.size()
 		);
 	}
 	vmaCopyMemoryToAllocation(
@@ -967,6 +981,7 @@ void VulkanInterface::updateTlas() {
 	}
 }
 void VulkanInterface::restructureDdgiProbes() {
+	m_ddgiClearIndices.clear();
 	const DDGIProbeBounds& bounds {m_currentScene->getDdgiProbeBounds()};
 	for (int x {bounds.xLower}; x <= bounds.xUpper; ++x) {
 		for (int y {bounds.yLower}; y <= bounds.yUpper; ++y) {
@@ -974,6 +989,7 @@ void VulkanInterface::restructureDdgiProbes() {
 				size_t index {probeCoordinatesToIndex(x, y, z)};
 				if (m_ddgiProbePositions[index] != glm::vec3 {x, y, z}) {
 					m_ddgiProbePositions[index] = glm::vec3 {x, y, z};
+					m_ddgiClearIndices.push_back(index);
 				}
 			}
 		}
@@ -981,15 +997,15 @@ void VulkanInterface::restructureDdgiProbes() {
 }
 size_t VulkanInterface::probeCoordinatesToIndex(int x, int y, int z) const {
 	const glm::vec3& cameraPosition {m_currentScene->getCameraPosition()};
-	int newX {(x + DDGI_PROBE_DIMENSIONS.x / 2) % DDGI_PROBE_DIMENSIONS.x};
+	int newX {(x + DDGI_PROBE_DIMENSIONS.x / 2 - 1) % DDGI_PROBE_DIMENSIONS.x};
 	if (newX < 0) {
 		newX += DDGI_PROBE_DIMENSIONS.x;
 	}
-	int newY {(y + DDGI_PROBE_DIMENSIONS.y / 2) % DDGI_PROBE_DIMENSIONS.y};
+	int newY {(y + DDGI_PROBE_DIMENSIONS.y / 2 - 1) % DDGI_PROBE_DIMENSIONS.y};
 	if (newY < 0) {
 		newY += DDGI_PROBE_DIMENSIONS.y;
 	}
-	int newZ {(z + DDGI_PROBE_DIMENSIONS.z / 2) % DDGI_PROBE_DIMENSIONS.z};
+	int newZ {(z + DDGI_PROBE_DIMENSIONS.z / 2 - 1) % DDGI_PROBE_DIMENSIONS.z};
 	if (newZ < 0) {
 		newZ += DDGI_PROBE_DIMENSIONS.z;
 	}
@@ -1002,7 +1018,7 @@ std::vector<glm::vec3> VulkanInterface::distributePointsOnUnitSphere(int samples
 	float rotationAngle {static_cast<float>(rng.getRandomFloat() * 2 * std::numbers::pi)};
 
 	std::vector<glm::vec3> points {};
-	float phi {static_cast<float>((3 - std::sqrt(5)) * std::numbers::pi) + rotationAngle};
+	float phi {static_cast<float>((3 - std::sqrt(5)) * std::numbers::pi)};
 	points.reserve(samples);
 	for (int sample {0}; sample < samples; ++sample) {
 		float z {1 - 2 * (static_cast<float>(sample) / samples)};

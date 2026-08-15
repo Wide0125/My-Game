@@ -107,7 +107,8 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 			 probeIndex.y * DDGI_PROBE_DIMENSIONS.z + probeIndex.z]
 		);
 		sampledRadiance = intersectionPointRadiance.rgb;
-		sampledDistance = distance(probeQuery.WorldRayOrigin(), intersectionPoint.worldPosition);
+		sampledDistance =
+			min(1.5, distance(probeQuery.WorldRayOrigin(), intersectionPoint.worldPosition));
 
 		probeRayDesc.TMax = probeQuery.CommittedRayT();
 		rayFlags = RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES | RAY_FLAG_CULL_OPAQUE;
@@ -136,7 +137,7 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 	} else {
 		sampledRadiance =
 			float3(0) * candidateTransmittanceFactor; // code for sampling sky box goes here
-		sampledDistance = 1e4;
+		sampledDistance = 1.5;
 	}
 	ddgiRadianceTransmissionTexture.Store(
 		{ rayIndex.x,

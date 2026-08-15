@@ -6,19 +6,23 @@ void computeMain(uint3 probeID: SV_GroupID, uint3 localTexelUV: SV_GroupThreadID
 	static groupshared uint counter;
 	static groupshared int probeIndex;
 	static groupshared int2 texelID;
+	static groupshared uint nanCounter;
 	if (localTexelUV.x == 0 && localTexelUV.y == 0) {
 		counter = 0;
 		probeIndex = probeID.x * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z +
 					 probeID.y * DDGI_PROBE_DIMENSIONS.z + probeID.z;
 		texelID = { (probeIndex % 64) * 8 + 1, (probeIndex / 64) * 8 + 1 };
+		nanCounter = 0;
 	}
 	GroupMemoryBarrierWithGroupSync();
 
 	float texelX = localTexelUV.x - 2.5;
 	float texelY = localTexelUV.y - 2.5;
-	float3 texelVector = { texelX / 3, texelY / 3 };
+	float3 texelVector = { texelX / 3.f, texelY / 3.f };
 	if (abs(texelX) + abs(texelY) > 3) {
 		texelVector.z = -(1 - abs(texelVector.x) - abs(texelVector.y));
+		texelVector.x = (1.0 - abs(texelVector.y)) * sign(texelVector.x);
+		texelVector.y = (1.0 - abs(texelVector.x)) * sign(texelVector.y);
 	} else if (abs(texelX) + abs(texelY) == 3) {
 		texelVector.z = 0;
 	} else {
@@ -27,13 +31,17 @@ void computeMain(uint3 probeID: SV_GroupID, uint3 localTexelUV: SV_GroupThreadID
 	texelVector = normalize(texelVector);
 
 	float3 irradiance = float3(0);
+	float weightSum = float(0);
+	int rayCount = 0;
 	for (int x = 0; x < RAY_COUNT; ++x) {
 		float dotProduct = dot(texelVector, ddgiProbeSamples[x]);
-		if (dotProduct > 0) {
-			irradiance += ddgiRadianceTransmissionTexture.Load( { x, probeIndex }) * dotProduct *
-						  ((4 * PI) / 192);
+		if (dotProduct >= 0) {
+			rayCount++;
+			irradiance += ddgiRadianceTransmissionTexture.Load( { x, probeIndex }) * dotProduct;
+			weightSum += dotProduct;
 		}
 	}
+	irradiance *= PI / rayCount;
 	float3 oldIrradiance = ddgiIrradianceTexture.Load(texelID + localTexelUV.xy);
 	ddgiIrradianceTexture.Store(
 		texelID + localTexelUV.xy, oldIrradiance * HYSTERESIS + irradiance * (1 - HYSTERESIS)
