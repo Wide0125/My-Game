@@ -1,9 +1,10 @@
 #ifndef CAMERA_HPP
 #define CAMERA_HPP
 
+#include <mutex>
 #include <numbers>
 #include <shared_mutex>
-#include <mutex>
+
 
 #include <glm/glm.hpp>
 
@@ -56,7 +57,7 @@ class Camera {
 		if (m_lookingDown) {
 			return {cos(m_gazeAngles.x), sin(m_gazeAngles.x), 0};
 		} else if (m_lookingUp) {
-			return -glm::vec3{cos(m_gazeAngles.x), sin(m_gazeAngles.x), 0};
+			return -glm::vec3 {cos(m_gazeAngles.x), sin(m_gazeAngles.x), 0};
 		}
 		return m_up;
 	}
