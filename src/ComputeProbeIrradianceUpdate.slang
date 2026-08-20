@@ -41,7 +41,7 @@ void computeMain(uint3 probeID: SV_GroupID, uint3 localTexelUV: SV_GroupThreadID
 			weightSum += dotProduct;
 		}
 	}
-	irradiance *= PI / rayCount;
+	irradiance *= PI / (2 * weightSum);
 	float3 oldIrradiance = ddgiIrradianceTexture.Load(texelID + localTexelUV.xy);
 	ddgiIrradianceTexture.Store(
 		texelID + localTexelUV.xy, oldIrradiance * HYSTERESIS + irradiance * (1 - HYSTERESIS)
