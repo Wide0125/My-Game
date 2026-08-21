@@ -79,6 +79,7 @@ add_executable(${PROJECT_NAME}
   src/VulkanInterfaceLoadScene.cpp
   src/VulkanInterfaceHelpers.cpp
   src/VulkanInterfaceDraw.cpp
+  src/VulkanInterfaceDDGI.cpp
   src/mikktspace.c
 )
 
