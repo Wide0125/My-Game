@@ -143,8 +143,8 @@ class VulkanInterface {
 	bool m_drawDdgiProbes {true};
 #endif
   private:
-	static constexpr int WIDTH {800};
-	static constexpr int HEIGHT {600};
+	static constexpr int WIDTH {1920};
+	static constexpr int HEIGHT {1080};
 
 	bool rayTracingAvailable {false};
 
@@ -281,6 +281,8 @@ class VulkanInterface {
 	vk::DeviceSize m_accelerationStructureScratchOffset {};
 
 	uint32_t m_frameIndex {0};
+
+	class DDGIVolume;
 
 	std::vector<glm::vec3> m_ddgiProbePositions {};
 	std::array<vk::Buffer, MAX_FRAMES_IN_FLIGHT> m_ddgiProbePositionBuffers {};

@@ -23,24 +23,21 @@ VulkanInterface::VulkanInterface() {
 void VulkanInterface::initWindow() {
 	glfwInit();
 
-	// glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-	// glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
-
-	// m_window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
-	// glfwSetWindowUserPointer(m_window, this);
-
-	const auto monitor {glfwGetPrimaryMonitor()};
-	const GLFWvidmode* mode {glfwGetVideoMode(monitor)};
-
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-	glfwWindowHint(GLFW_RED_BITS, mode->redBits);
-	glfwWindowHint(GLFW_GREEN_BITS, mode->greenBits);
-	glfwWindowHint(GLFW_BLUE_BITS, mode->blueBits);
-	glfwWindowHint(GLFW_REFRESH_RATE, mode->refreshRate);
-	glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GLFW_TRUE);
+	m_window = glfwCreateWindow(WIDTH, HEIGHT, "My Game", nullptr, nullptr);
+	glfwSetWindowUserPointer(m_window, this);
 
-	m_window = glfwCreateWindow(mode->width, mode->height, "My Game", nullptr, NULL);
+	// const auto monitor {glfwGetPrimaryMonitor()};
+	// const GLFWvidmode* mode {glfwGetVideoMode(monitor)};
+
+	// glfwWindowHint(GLFW_RED_BITS, mode->redBits);
+	// glfwWindowHint(GLFW_GREEN_BITS, mode->greenBits);
+	// glfwWindowHint(GLFW_BLUE_BITS, mode->blueBits);
+	// glfwWindowHint(GLFW_REFRESH_RATE, mode->refreshRate);
+	// glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GLFW_TRUE);
+
+	// m_window = glfwCreateWindow(WIDTH, HEIGHT, "My Game", monitor, NULL);
 }
 void VulkanInterface::initVulkan() {
 	createInstance();
@@ -101,7 +98,9 @@ void VulkanInterface::createInstance() {
 
 void VulkanInterface::createSurface() {
 	VkSurfaceKHR _surface {};
-	if (glfwCreateWindowSurface(*m_instance, m_window, nullptr, &_surface) != 0) {
+	const auto error {glfwCreateWindowSurface(*m_instance, m_window, nullptr, &_surface
+	)};
+	if (error != 0) {
 		throw std::runtime_error("Failed to create window surface!");
 	}
 	m_surface = {m_instance, _surface};
@@ -109,11 +108,6 @@ void VulkanInterface::createSurface() {
 
 void VulkanInterface::pickPhysicalDevice() {
 	m_availablePhysicalDevices = m_instance.enumeratePhysicalDevices();
-	for (const auto& physicalDevice: m_availablePhysicalDevices) {
-		std::println(
-			"{}", static_cast<std::string>(physicalDevice.getProperties2().properties.deviceName)
-		);
-	}
 	auto const devicesIt {
 		std::ranges::find_if(m_availablePhysicalDevices, [&](auto const& physicalDevice) {
 			return isDeviceSuitable(physicalDevice);
@@ -122,6 +116,8 @@ void VulkanInterface::pickPhysicalDevice() {
 	if (devicesIt == m_availablePhysicalDevices.end()) {
 		throw std::runtime_error("Failed to find a suitable GPU!");
 	}
+	std::println("{}", static_cast<std::string>(devicesIt->getProperties2().properties.deviceName));
+
 	m_physicalDevice = *devicesIt;
 	vk::StructureChain<
 		vk::PhysicalDeviceProperties2,
