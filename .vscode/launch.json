@@ -10,7 +10,7 @@
             "name": "Debug LLDB",
             "program": "${command:cmake.launchTargetPath}",
             "args": [],
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}",
         },
         {
             "name": "Pick Process Attach",

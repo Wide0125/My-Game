@@ -46,7 +46,6 @@ void computeMain(uint3 probeID: SV_GroupID, uint3 localTexelUV: SV_GroupThreadID
 			break;
 		}
 	}
-	printf("%i\n", sampleCount);
 	if (sampleCount > 0) {
 		distance /= sampleCount;
 		distance2 /= sampleCount;
