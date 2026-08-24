@@ -36,7 +36,7 @@ void computeMain(uint3 probeID: SV_GroupID, uint3 localTexelUV: SV_GroupThreadID
 	int status = 0;
 	for (int currIndex = 0; currIndex <= RAY_COUNT; ++currIndex) {
 		float dot = dot(texelVector, ddgiProbeSamples[currIndex]);
-		if (dot >= 0.99999326) {
+		if (dot >= 0.95) {
 			++status;
 			float currDistance = ddgiDistanceTransmissionTexture.Load( { currIndex, probeIndex });
 			distance += currDistance;
