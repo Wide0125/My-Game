@@ -79,7 +79,6 @@ add_executable(${PROJECT_NAME}
   src/VulkanInterfaceLoadScene.cpp
   src/VulkanInterfaceHelpers.cpp
   src/VulkanInterfaceDraw.cpp
-  src/VulkanInterfaceDDGI.cpp
   src/mikktspace.c
 )
 
@@ -103,7 +102,7 @@ function(compile_shaders TARGET)
   )
   add_custom_command(
     OUTPUT ${SHADER_OUTPUT}
-    COMMAND ${SLANGC_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/src/${SHADER_SOURCES} -target spirv -profile spirv_1_6 -emit-spirv-directly -fvk-use-entrypoint-name -fvk-use-c-layout ${ENTRY_POINTS} -o ${SHADER_OUTPUT}
+    COMMAND ${SLANGC_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/src/${SHADER_SOURCES} -target spirv -profile spirv_1_6 -emit-spirv-directly -fvk-use-entrypoint-name -fvk-use-c-layout -g ${ENTRY_POINTS} -o ${SHADER_OUTPUT}
     WORKING_DIRECTORY ${SHADERS_DIR}
     DEPENDS ${SHADERS_DIR} src/${SHADER_SOURCES}
     COMMENT "Compiling Slang Shaders"
