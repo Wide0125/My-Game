@@ -32,23 +32,23 @@ void computeMain(uint3 probeID: SV_GroupID, uint3 localTexelUV: SV_GroupThreadID
 
 	float distance = 0;
 	float distance2 = 0;
-	int sampleCount = 0;
+	float accumulatedDots = 0;
 	int status = 0;
 	for (int currIndex = 0; currIndex <= RAY_COUNT; ++currIndex) {
 		float dot = dot(texelVector, ddgiProbeSamples[currIndex]);
-		if (dot >= 0.95) {
+		if (dot >= 0.8) {
 			++status;
 			float currDistance = ddgiDistanceTransmissionTexture.Load( { currIndex, probeIndex });
-			distance += currDistance;
-			distance2 += currDistance * currDistance;
-			++sampleCount;
+			distance += currDistance * dot;
+			distance2 += currDistance * currDistance * dot;
+			accumulatedDots += dot;
 		} else if (status > 0) {
 			break;
 		}
 	}
-	if (sampleCount > 0) {
-		distance /= sampleCount;
-		distance2 /= sampleCount;
+	if (accumulatedDots > 0) {
+		distance /= accumulatedDots;
+		distance2 /= accumulatedDots;
 		float2 previousDistances = ddgiDepthTexture.Load(texelID + localTexelUV.xy);
 		ddgiDepthTexture.Store(
 			texelID + localTexelUV.xy,

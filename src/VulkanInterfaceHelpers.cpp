@@ -8,6 +8,8 @@
 
 #include "mikktspace.h"
 
+#include <glm/gtx/euler_angles.hpp>
+
 // initVulkan helper functions
 bool VulkanInterface::isDeviceSuitable(const vk::raii::PhysicalDevice& physicalDevice) const {
 	bool supportsVulkan1_3 {
@@ -1017,7 +1019,11 @@ size_t VulkanInterface::probeCoordinatesToIndex(int x, int y, int z) const {
 
 std::vector<glm::vec3> VulkanInterface::distributePointsOnUnitSphere(int samples) const {
 	PRNG rng {};
-	float rotationAngle {static_cast<float>(rng.getRandomFloat() * 2 * std::numbers::pi)};
+	float rotationAngleX {static_cast<float>(rng.getRandomFloat() * 2 * std::numbers::pi)};
+	float rotationAngleY {static_cast<float>(rng.getRandomFloat() * 2 * std::numbers::pi)};
+	float rotationAngleZ {static_cast<float>(rng.getRandomFloat() * 2 * std::numbers::pi)};
+
+	glm::mat3x3 rotationMatrix {glm::eulerAngleXYZ(rotationAngleX, rotationAngleY, rotationAngleZ)};
 
 	std::vector<glm::vec3> points {};
 	float phi {static_cast<float>((3 - std::sqrt(5)) * std::numbers::pi)};
@@ -1028,9 +1034,9 @@ std::vector<glm::vec3> VulkanInterface::distributePointsOnUnitSphere(int samples
 
 		float theta {phi * sample};
 
-		float x = cos(theta) * radius;
-		float y = sin(theta) * radius;
-		points.emplace_back(x, y, z);
+		float x = std::cos(theta) * radius;
+		float y = std::sin(theta) * radius;
+		points.push_back(rotationMatrix * glm::vec3 {x, y, z});
 	}
 	return points;
 }

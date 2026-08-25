@@ -138,7 +138,7 @@ class VulkanInterface {
 	static constexpr int DDGI_MODEL_INDEX {1};
 
 #ifdef NDEBUG
-	bool m_drawProbes {false};
+	bool m_drawDdgiProbes {false};
 #else
 	bool m_drawDdgiProbes {true};
 #endif

@@ -140,4 +140,4 @@ static const float PI = 3.14159265359;
 static const uint32_t UINT32_MAX = 4294967295;
 static const int3 DDGI_PROBE_DIMENSIONS = { 32, 32, 4 };
 static const int RAY_COUNT = 192;
-static const float HYSTERESIS = 0.85;
+static const float HYSTERESIS = 0.95;

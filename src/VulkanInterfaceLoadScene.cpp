@@ -469,7 +469,7 @@ void VulkanInterface::createDdgiProbes() {
 		m_ddgiDepthSampleCountImage, vk::Format::eR32Uint, vk::ImageAspectFlagBits::eColor, 1
 	);
 	createImage(
-		192,
+		DDGI_PROBE_SAMPLES,
 		DDGI_PROBE_DIMENSIONS.x * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z,
 		1,
 		vk::Format::eB10G11R11UfloatPack32,
@@ -488,7 +488,7 @@ void VulkanInterface::createDdgiProbes() {
 		1
 	);
 	createImage(
-		192,
+		DDGI_PROBE_SAMPLES,
 		DDGI_PROBE_DIMENSIONS.x * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z,
 		1,
 		vk::Format::eR16Sfloat,

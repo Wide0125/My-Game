@@ -5,12 +5,12 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "type": "lldb-dap",
+            "type": "lldb",
             "request": "launch",
             "name": "Debug LLDB",
             "program": "${command:cmake.launchTargetPath}",
             "args": [],
-            "cwd": "${workspaceFolder}",
+            "cwd": "${workspaceFolder}"
         },
         {
             "name": "Pick Process Attach",
