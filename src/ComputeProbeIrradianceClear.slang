@@ -1,14 +1,17 @@
-import bindings;
+import ComputeBindings;
+import Constants;
 
 [shader("compute")]
 [numthreads(8, 8, 1)]
-void computeMain(uint3 probeID: SV_GroupID, uint3 localTexelUV: SV_GroupThreadID) {
-	static groupshared int probeIndex;
+void computeMain(uint3 probeIndex: SV_GroupID, uint3 localTexelUV: SV_GroupThreadID) {
 	static groupshared int2 texelID;
 	if (localTexelUV.x == 0 && localTexelUV.y == 0) {
-		probeIndex = probeID.x * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z +
-					 probeID.y * DDGI_PROBE_DIMENSIONS.z + probeID.z;
-		texelID = { (probeIndex % 64) * 8, (probeIndex / 64) * 8 };
+		texelID =
+			int2(
+				(cascadeIndex % 2) * DDGI_TEXTURE_SIZE * 8,
+				(cascadeIndex / 2) * DDGI_TEXTURE_SIZE * 8
+			) +
+			int2((probeIndex.x % DDGI_TEXTURE_SIZE) * 8, (probeIndex.x / DDGI_TEXTURE_SIZE) * 8);
 	}
 	GroupMemoryBarrierWithGroupSync();
 

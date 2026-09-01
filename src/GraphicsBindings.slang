@@ -1,4 +1,4 @@
-public module bindings;
+public module GraphicsBindings;
 
 struct VSInput {
 	float3 position : POSITION;
@@ -78,15 +78,6 @@ struct Metadata {
 	MeshType type;
 };
 
-struct DDGIProbeBounds {
-	int xLower;
-	int xUpper;
-	int yLower;
-	int yUpper;
-	int zLower;
-	int zUpper;
-};
-
 [vk::binding(0, 0)]
 StructuredBuffer<ModelTransformBuffer> modelTransform;
 [vk::binding(1, 0)]
@@ -107,37 +98,3 @@ StructuredBuffer<uint32_t> indices;
 StructuredBuffer<tlasLUTBuffer> tlasLut;
 [vk::binding(9, 0)]
 StructuredBuffer<Metadata> metadata;
-[vk::binding(10, 0)]
-StructuredBuffer<float3> ddgiProbePositions;
-[vk::image_format("r11f_g11f_b10f")]
-[vk::binding(11, 0)]
-Sampler2D ddgiIrradianceSampler;
-[vk::image_format("rg16f")]
-[vk::binding(12, 0)]
-Sampler2D ddgiDepthSampler;
-[vk::binding(13, 0)]
-StructuredBuffer<float3> ddgiProbeSamples;
-[vk::binding(14, 0)]
-ConstantBuffer<DDGIProbeBounds> ddgiBounds;
-[vk::image_format("r11f_g11f_b10f")]
-[vk::binding(15, 0)]
-RWTexture2D<float3> ddgiRadianceTransmissionTexture;
-[vk::image_format("r16f")]
-[vk::binding(16, 0)]
-RWTexture2D<float> ddgiDistanceTransmissionTexture;
-[vk::image_format("r11f_g11f_b10f")]
-[vk::binding(17, 0)]
-RWTexture2D<float3> ddgiIrradianceTexture;
-[vk::image_format("rg16f")]
-[vk::binding(18, 0)]
-RWTexture2D<float2> ddgiDepthTexture;
-[vk::image_format("r32ui")]
-[vk::binding(19, 0)]
-RWTexture2D<uint> ddgiDepthSampleCountTexture;
-
-static const float EPSILON = 0.01;
-static const float PI = 3.14159265359;
-static const uint32_t UINT32_MAX = 4294967295;
-static const int3 DDGI_PROBE_DIMENSIONS = { 32, 32, 4 };
-static const int RAY_COUNT = 192;
-static const float HYSTERESIS = 0.95;

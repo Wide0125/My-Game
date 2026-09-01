@@ -22,7 +22,8 @@ void VulkanInterface::loadScene(const fastgltf::Asset& asset, Scene* pScene) {
 	createTextureImages(asset);
 	createTextureSamplers(asset);
 	loadMeshes(asset);
-	createDdgiProbes();
+	createDdgiCascades();
+	createDdgiResources();
 	createAccelerationStructures();
 	loadMaterials(asset);
 	createBuffers();
@@ -366,27 +367,45 @@ void VulkanInterface::loadMeshes(const fastgltf::Asset& asset) {
 	);
 }
 
-void VulkanInterface::createDdgiProbes() {
-	const DDGIProbeBounds& bounds {m_currentScene->getDdgiProbeBounds()};
-	m_ddgiProbePositions.reserve(
-		DDGI_PROBE_DIMENSIONS.x * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z
-	);
-	for (int x {bounds.xLower}; x <= bounds.xUpper; ++x) {
-		for (int y {bounds.yLower}; y <= bounds.yUpper; ++y) {
-			for (int z {bounds.zLower}; z <= bounds.zUpper; ++z) {
-				m_ddgiProbePositions.emplace_back(x, y, z);
-				probeCoordinatesToIndex(x, y, z);
-			}
-		}
+void VulkanInterface::createDdgiCascades() {
+	int cascadeIndex {0};
+	int probeRunningCount {0};
+	for (auto& ddgiCascade: m_ddgiCascades) {
+		ddgiCascade.gridSpacing = std::pow(2, cascadeIndex);
+		ddgiCascade.innerDimensions =
+			(cascadeIndex != 0 ? ddgiCascade.gridSpacing / 2 : 0) * DDGI_CASCADE_BASE_DIMENSIONS;
+		ddgiCascade.outerDimensions = ddgiCascade.gridSpacing * DDGI_CASCADE_BASE_DIMENSIONS;
+		ddgiCascade.innerBounds.upperBounds =
+			static_cast<glm::ivec3>(glm::floor(m_currentScene->getCameraPosition())) +
+			ddgiCascade.innerDimensions / 2;
+		ddgiCascade.innerBounds.lowerBounds =
+			static_cast<glm::ivec3>(glm::floor(m_currentScene->getCameraPosition())) -
+			ddgiCascade.innerDimensions / 2;
+		ddgiCascade.outerBounds.upperBounds =
+			static_cast<glm::ivec3>(glm::floor(m_currentScene->getCameraPosition())) +
+			ddgiCascade.outerDimensions / 2;
+		ddgiCascade.outerBounds.lowerBounds =
+			static_cast<glm::ivec3>(glm::floor(m_currentScene->getCameraPosition())) -
+			ddgiCascade.outerDimensions / 2;
+
+		ddgiCascade.probeCount = (DDGI_CASCADE_BASE_DIMENSIONS.x + 1) *
+								 (DDGI_CASCADE_BASE_DIMENSIONS.y + 1) *
+								 (DDGI_CASCADE_BASE_DIMENSIONS.z + 1);
+		// we place probes on integer coordinates (inclusive), so we
+		// must add 1 probe to each axis
+		ddgiCascade.innerProbeCount =
+			(cascadeIndex != 0 ? (ddgiCascade.innerDimensions.x / ddgiCascade.gridSpacing + 1) *
+									 (ddgiCascade.innerDimensions.y / ddgiCascade.gridSpacing + 1) *
+									 (ddgiCascade.innerDimensions.z / ddgiCascade.gridSpacing + 1)
+							   : 0);
+		++cascadeIndex;
+		probeRunningCount += ddgiCascade.probeCount;
 	}
+	m_ddgiTotalProbeCount = probeRunningCount;
+}
+
+void VulkanInterface::createDdgiResources() {
 	for (int frameIndex {0}; frameIndex < MAX_FRAMES_IN_FLIGHT; ++frameIndex) {
-		createHostBufferWithData(
-			sizeof(glm::vec3) * m_ddgiProbePositions.size(),
-			vk::BufferUsageFlagBits::eStorageBuffer,
-			m_ddgiProbePositions.data(),
-			m_ddgiProbePositionBuffers[frameIndex],
-			m_ddgiProbePositionAllocations[frameIndex]
-		);
 		createBuffer(
 			sizeof(glm::vec3) * DDGI_PROBE_SAMPLES,
 			vk::BufferUsageFlagBits::eStorageBuffer,
@@ -395,26 +414,53 @@ void VulkanInterface::createDdgiProbes() {
 			m_ddgiProbeSampleBuffers[frameIndex],
 			m_ddgiProbeSampleAllocations[frameIndex]
 		);
+		std::vector<DDGICascadeGPU> cascadesGpu {};
+		cascadesGpu.reserve(DDGI_LEVELS);
+		for (const auto& cascade: m_ddgiCascades) {
+			cascadesGpu.emplace_back(cascade);
+		}
 		createHostBufferWithData(
-			sizeof(DDGIProbeBounds),
+			sizeof(DDGICascadeGPU) * DDGI_LEVELS,
 			vk::BufferUsageFlagBits::eUniformBuffer,
-			&m_currentScene->getDdgiProbeBounds(),
-			m_ddgiProbeBoundsBuffers[frameIndex],
-			m_ddgiProbeBoundsAllocations[frameIndex]
+			cascadesGpu.data(),
+			m_ddgiCascadeBuffers[frameIndex],
+			m_ddgiCascadeAllocations[frameIndex]
 		);
 		createBuffer(
-			sizeof(uint32_t) * DDGI_PROBE_DIMENSIONS.x * DDGI_PROBE_DIMENSIONS.y *
-				DDGI_PROBE_DIMENSIONS.z,
+			sizeof(vk::DispatchIndirectCommand),
 			vk::BufferUsageFlagBits::eUniformBuffer,
-			VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-				VMA_ALLOCATION_CREATE_MAPPED_BIT,
-			m_ddgiClearIndexBuffers[frameIndex],
-			m_ddgiClearIndexAllocations[frameIndex]
+			{},
+			m_ddgiClearDispatchCommandBuffers[frameIndex],
+			m_ddgiClearDispatchCommandAllocations[frameIndex]
 		);
 	}
+	createBuffer(
+		sizeof(DDGIClearIndex) * m_ddgiTotalProbeCount,
+		vk::BufferUsageFlagBits::eStorageBuffer,
+		{},
+		m_ddgiClearIndicesBuffer,
+		m_ddgiClearIndicesAllocation
+	);
+	std::vector<DDGIProbe> ddgiProbes {
+		static_cast<size_t>(m_ddgiTotalProbeCount), DDGIProbe {{0, 0, 0}, false, {0, 0, 0}}
+	};
+	createGPUBufferWithData(
+		sizeof(ddgiProbes[0]) * ddgiProbes.size(),
+		vk::BufferUsageFlagBits::eStorageBuffer,
+		ddgiProbes.data(),
+		m_ddgiProbeBuffer,
+		m_ddgiProbeAllocation
+	);
+	createGPUBufferWithData(
+		sizeof(glm::ivec3),
+		vk::BufferUsageFlagBits::eUniformBuffer,
+		&DDGI_CASCADE_BASE_DIMENSIONS,
+		m_ddgiBaseDimensionsBuffer,
+		m_ddgiBaseDimensionsAllocation
+	);
 	createImage(
-		256 * 2,
-		256 * 2,
+		8 * DDGI_LEVELS / 2 * static_cast<int>(std::ceil(std::sqrt(m_ddgiCascades[0].probeCount))),
+		8 * DDGI_LEVELS / 2 * static_cast<int>(std::ceil(std::sqrt(m_ddgiCascades[0].probeCount))),
 		1,
 		vk::Format::eB10G11R11UfloatPack32,
 		vk::ImageTiling::eOptimal,
@@ -434,8 +480,8 @@ void VulkanInterface::createDdgiProbes() {
 		1
 	);
 	createImage(
-		512 * 2,
-		512 * 2,
+		16 * DDGI_LEVELS / 2 * static_cast<int>(std::ceil(std::sqrt(m_ddgiCascades[0].probeCount))),
+		16 * DDGI_LEVELS / 2 * static_cast<int>(std::ceil(std::sqrt(m_ddgiCascades[0].probeCount))),
 		1,
 		vk::Format::eR16G16Sfloat,
 		vk::ImageTiling::eOptimal,
@@ -452,25 +498,8 @@ void VulkanInterface::createDdgiProbes() {
 		m_ddgiDepthImage, vk::Format::eR16G16Sfloat, vk::ImageAspectFlagBits::eColor, 1
 	);
 	createImage(
-		512 * 2,
-		512 * 2,
-		1,
-		vk::Format::eR32Uint,
-		vk::ImageTiling::eOptimal,
-		vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferDst,
-		m_ddgiDepthSampleCountImage,
-		m_ddgiDepthSampleCountAllocation
-	);
-	transitionImageLayout(
-		m_ddgiDepthSampleCountImage, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral, 1
-	);
-	clearImage(m_ddgiDepthSampleCountImage, vk::ImageLayout::eGeneral);
-	m_ddgiDepthSampleCountImageView = createImageView(
-		m_ddgiDepthSampleCountImage, vk::Format::eR32Uint, vk::ImageAspectFlagBits::eColor, 1
-	);
-	createImage(
-		DDGI_PROBE_SAMPLES,
-		DDGI_PROBE_DIMENSIONS.x * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z,
+		DDGI_PROBE_SAMPLES * DDGI_LEVELS / 2,
+		m_ddgiCascades[0].probeCount * DDGI_LEVELS / 2,
 		1,
 		vk::Format::eB10G11R11UfloatPack32,
 		vk::ImageTiling::eOptimal,
@@ -488,8 +517,8 @@ void VulkanInterface::createDdgiProbes() {
 		1
 	);
 	createImage(
-		DDGI_PROBE_SAMPLES,
-		DDGI_PROBE_DIMENSIONS.x * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z,
+		DDGI_PROBE_SAMPLES * DDGI_LEVELS / 2,
+		m_ddgiCascades[0].probeCount * DDGI_LEVELS / 2,
 		1,
 		vk::Format::eR16Sfloat,
 		vk::ImageTiling::eOptimal,
@@ -521,9 +550,6 @@ void VulkanInterface::createDdgiProbes() {
 		.maxLod = vk::LodClampNone
 	};
 	m_ddgiTextureSampler = {m_device, ddgiSamplerInfo};
-	m_ddgiClearIndices.reserve(
-		DDGI_PROBE_DIMENSIONS.x * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z
-	);
 }
 
 void VulkanInterface::createAccelerationStructures() {
@@ -861,7 +887,7 @@ void VulkanInterface::createBuffers() {
 	for (size_t frameInFlight {0}; frameInFlight < MAX_FRAMES_IN_FLIGHT; ++frameInFlight) {
 		vk::DeviceSize bufferSize {sizeof(ModelTransformBufferObject) * modelInstanceCount};
 		if (m_drawDdgiProbes) {
-			bufferSize += sizeof(ModelTransformBufferObject) * m_ddgiProbePositions.size();
+			bufferSize += sizeof(ModelTransformBufferObject) * m_ddgiTotalProbeCount;
 		}
 		createBuffer(
 			bufferSize,
@@ -893,7 +919,7 @@ void VulkanInterface::createBuffers() {
 		);
 	}
 	int offset {0};
-	std::vector<DrawIndirectCommand> drawCommands {};
+	std::vector<vk::DrawIndexedIndirectCommand> drawCommands {};
 	std::vector<SubMeshMetadataBufferObject> metaData {};
 	drawCommands.reserve(m_currentScene->getModelInstancesPerMesh().size() * m_subMeshCount);
 	metaData.reserve(m_currentScene->getModelInstancesPerMesh().size() * m_subMeshCount);
@@ -960,15 +986,13 @@ void VulkanInterface::createBuffers() {
 		);
 		if (m_drawDdgiProbes) {
 			std::vector<ModelTransformBufferObject> ddgiProbeTransformations {};
-			ddgiProbeTransformations.reserve(m_ddgiProbePositions.size());
-			for (const auto& position: m_ddgiProbePositions) {
-				ddgiProbeTransformations.emplace_back(
-					glm::translate(position) * glm::scale(glm::vec3 {0.1, 0.1, 0.1})
-				);
+			ddgiProbeTransformations.reserve(m_ddgiTotalProbeCount);
+			for (int probeIndex {0}; probeIndex < m_ddgiTotalProbeCount; ++probeIndex) {
+				ddgiProbeTransformations.emplace_back(glm::mat4x4 {}, glm::mat4x4 {}, probeIndex);
 			}
-			DrawIndirectCommand probeDrawCommand {
+			vk::DrawIndexedIndirectCommand probeDrawCommand {
 				m_meshes[DDGI_MODEL_INDEX].subMeshes[0].indexCount,
-				static_cast<uint32_t>(m_ddgiProbePositions.size()),
+				static_cast<uint32_t>(m_ddgiTotalProbeCount),
 				m_meshes[DDGI_MODEL_INDEX].subMeshes[0].indexStart,
 				static_cast<int32_t>(m_meshes[DDGI_MODEL_INDEX].subMeshes[0].vertexOffset),
 				static_cast<uint32_t>(m_currentScene->getModelInstanceTransforms().size())
@@ -983,15 +1007,15 @@ void VulkanInterface::createBuffers() {
 				m_modelTransformAllocations[frameIndex],
 				sizeof(ModelTransformBufferObject) *
 					m_currentScene->getModelInstanceTransforms().size(),
-				sizeof(ModelTransformBufferObject) * m_ddgiProbePositions.size()
+				sizeof(ModelTransformBufferObject) * m_ddgiTotalProbeCount
 			);
 			vmaCopyMemoryToAllocation(
 				m_allocator,
 				&probeDrawCommand,
 				m_drawCommandsAllocations[frameIndex],
-				sizeof(DrawIndirectCommand) *
+				sizeof(vk::DrawIndexedIndirectCommand) *
 					(m_opaqueDrawCallsCount + m_transparentDrawCallsCount),
-				sizeof(DrawIndirectCommand)
+				sizeof(vk::DrawIndexedIndirectCommand)
 			);
 			vmaCopyMemoryToAllocation(
 				m_allocator,
@@ -1023,7 +1047,7 @@ void VulkanInterface::createDescriptorSets(const fastgltf::Asset& asset) {
 			.offset = 0,
 			.range = sizeof(ModelTransformBufferObject) *
 					 (m_currentScene->getModelInstanceTransforms().size() +
-					  (m_drawDdgiProbes ? m_ddgiProbePositions.size() : 0))
+					  (m_drawDdgiProbes ? m_ddgiTotalProbeCount : 0))
 		};
 
 		vk::DescriptorBufferInfo vpTransformBufferInfo {
@@ -1146,9 +1170,9 @@ void VulkanInterface::createComputeDescriptorSets() {
 			.accelerationStructureCount = 1, .pAccelerationStructures = &*m_tlas
 		};
 		vk::DescriptorBufferInfo ddgiPositionBufferInfo {
-			.buffer = m_ddgiProbePositionBuffers[frameIndex],
+			.buffer = m_ddgiProbeBuffer,
 			.offset = 0,
-			.range = sizeof(glm::vec3) * m_ddgiProbePositions.size()
+			.range = sizeof(DDGIProbe) * m_ddgiTotalProbeCount
 		};
 		vk::DescriptorImageInfo ddgiIrradianceImageInfo {
 			.sampler = m_ddgiTextureSampler,
@@ -1165,10 +1189,10 @@ void VulkanInterface::createComputeDescriptorSets() {
 			.offset = 0,
 			.range = sizeof(glm::vec3) * DDGI_PROBE_SAMPLES
 		};
-		vk::DescriptorBufferInfo ddgiProbeBoundsBufferInfo {
-			.buffer = m_ddgiProbeBoundsBuffers[frameIndex],
+		vk::DescriptorBufferInfo ddgiCascadeBufferInfo {
+			.buffer = m_ddgiCascadeBuffers[frameIndex],
 			.offset = 0,
-			.range = sizeof(DDGIProbeBounds)
+			.range = sizeof(DDGICascadeGPU) * DDGI_LEVELS
 		};
 		vk::DescriptorImageInfo ddgiRadianceTransmissionImageInfo {
 			.imageView = m_ddgiRadianceTransmissionImageView,
@@ -1181,7 +1205,20 @@ void VulkanInterface::createComputeDescriptorSets() {
 		vk::DescriptorImageInfo ddgiDepthSampleCountImageInfo {
 			.imageView = m_ddgiDepthSampleCountImageView, .imageLayout = vk::ImageLayout::eGeneral
 		};
-		std::array<vk::WriteDescriptorSet, 10> descriptorWrites {
+		vk::DescriptorBufferInfo ddgiBaseDimensionsBufferInfo {
+			.buffer = m_ddgiBaseDimensionsBuffer, .offset = 0, .range = sizeof(glm::ivec3)
+		};
+		vk::DescriptorBufferInfo ddgiClearIndicesBufferInfo {
+			.buffer = m_ddgiClearIndicesBuffer,
+			.offset = 0,
+			.range = sizeof(DDGIClearIndex) * m_ddgiTotalProbeCount
+		};
+		vk::DescriptorBufferInfo ddgiClearCommandBufferInfo {
+			.buffer = m_ddgiClearDispatchCommandBuffers[frameIndex],
+			.offset = 0,
+			.range = sizeof(vk::DispatchIndirectCommand)
+		};
+		std::array<vk::WriteDescriptorSet, 12> descriptorWrites {
 			{{.dstSet = m_descriptorSets[frameIndex],
 			  .dstBinding = 10,
 			  .dstArrayElement = 0,
@@ -1211,7 +1248,7 @@ void VulkanInterface::createComputeDescriptorSets() {
 			  .dstArrayElement = 0,
 			  .descriptorCount = 1,
 			  .descriptorType = vk::DescriptorType::eUniformBuffer,
-			  .pBufferInfo = &ddgiProbeBoundsBufferInfo},
+			  .pBufferInfo = &ddgiCascadeBufferInfo},
 			 {.dstSet = m_descriptorSets[frameIndex],
 			  .dstBinding = 15,
 			  .dstArrayElement = 0,
@@ -1238,10 +1275,19 @@ void VulkanInterface::createComputeDescriptorSets() {
 			  .pImageInfo = &ddgiDepthImageInfo},
 			 {.dstSet = m_descriptorSets[frameIndex],
 			  .dstBinding = 19,
-			  .dstArrayElement = 0,
 			  .descriptorCount = 1,
-			  .descriptorType = vk::DescriptorType::eStorageImage,
-			  .pImageInfo = &ddgiDepthSampleCountImageInfo}}
+			  .descriptorType = vk::DescriptorType::eUniformBuffer,
+			  .pBufferInfo = &ddgiBaseDimensionsBufferInfo},
+			 {.dstSet = m_descriptorSets[frameIndex],
+			  .dstBinding = 20,
+			  .descriptorCount = 1,
+			  .descriptorType = vk::DescriptorType::eStorageBuffer,
+			  .pBufferInfo = &ddgiClearIndicesBufferInfo},
+			 {.dstSet = m_descriptorSets[frameIndex],
+			  .dstBinding = 21,
+			  .descriptorCount = 1,
+			  .descriptorType = vk::DescriptorType::eUniformBuffer,
+			  .pBufferInfo = &ddgiClearCommandBufferInfo}}
 		};
 		m_device.updateDescriptorSets(descriptorWrites, {});
 	}
@@ -1432,7 +1478,9 @@ void VulkanInterface::createComputePipelines() {
 	vk::PipelineLayoutCreateInfo computeProbeIrradianceClearPipelineLayoutInfo {
 		.setLayoutCount = 1, .pSetLayouts = &*m_descriptorSetLayout
 	};
-	m_computeProbeIrradianceClearPipelineLayout = {m_device, computeProbeIrradianceClearPipelineLayoutInfo};
+	m_computeProbeIrradianceClearPipelineLayout = {
+		m_device, computeProbeIrradianceClearPipelineLayoutInfo
+	};
 	vk::ComputePipelineCreateInfo computeProbeIrradianceClearPipelineInfo {
 		.stage = computeProbeIrradianceClearShaderStageInfo,
 		.layout = m_computeProbeIrradianceClearPipelineLayout
@@ -1451,9 +1499,7 @@ void VulkanInterface::createComputePipelines() {
 	vk::PipelineLayoutCreateInfo computeProbeDepthClearPipelineLayoutInfo {
 		.setLayoutCount = 1, .pSetLayouts = &*m_descriptorSetLayout
 	};
-	m_computeProbeDepthClearPipelineLayout = {
-		m_device, computeProbeDepthClearPipelineLayoutInfo
-	};
+	m_computeProbeDepthClearPipelineLayout = {m_device, computeProbeDepthClearPipelineLayoutInfo};
 	vk::ComputePipelineCreateInfo computeProbeDepthClearPipelineInfo {
 		.stage = computeProbeDepthClearShaderStageInfo,
 		.layout = m_computeProbeDepthClearPipelineLayout

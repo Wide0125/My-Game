@@ -111,7 +111,7 @@ function(compile_shaders TARGET)
   add_custom_target(${TARGET} DEPENDS ${SHADER_OUTPUT})
 endfunction()
 
-compile_shaders(graphics_shader OUTPUT graphics.spv SOURCES Graphics.slang ENTRY_POINTS vertMain fragMain)
+compile_shaders(graphics_shader OUTPUT Graphics.spv SOURCES Graphics.slang ENTRY_POINTS vertMain fragMain)
 compile_shaders(compute_ray_sample_shader OUTPUT ComputeRaySample.spv SOURCES ComputeRaySample.slang ENTRY_POINTS computeMain)
 compile_shaders(compute_probe_irradiance_update_shader OUTPUT ComputeProbeIrradianceUpdate.spv SOURCES ComputeProbeIrradianceUpdate.slang ENTRY_POINTS computeMain)
 compile_shaders(compute_probe_depth_update_shader OUTPUT ComputeProbeDepthUpdate.spv SOURCES ComputeProbeDepthUpdate.slang ENTRY_POINTS computeMain)

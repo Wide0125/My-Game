@@ -1,13 +1,39 @@
-import bindings;
-import lighting;
+import GraphicsBindings;
+import ComputeBindings;
+import Lighting;
+import Constants;
 
 [shader("compute")]
 [numthreads(RAY_COUNT, 1, 1)]
 void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID) {
+	static groupshared int globalProbeIndex;
+	static groupshared Atomic<float> probeMinimumDistance;
+	static groupshared Atomic<int> counter;
+	if (rayIndex.x == 0) {
+		globalProbeIndex = probeIndex.x + cascadeIndex * PROBES_PER_CASCADE;
+		probeMinimumDistance = 1.5;
+		if (withinBounds(
+				ddgiProbes[globalProbeIndex].position, ddgiCascades[cascadeIndex].innerBounds
+			)) {
+			ddgiProbes[globalProbeIndex].active = false;
+			return;
+		}
+		int3 position = indexToGlobalCoordinates(
+			probeIndex.x,
+			ddgiCascades[cascadeIndex].outerBounds,
+			ddgiCascades[cascadeIndex].gridSpacing
+		);
+		if (any(ddgiProbes[globalProbeIndex].position != position)) {
+			ddgiProbes[globalProbeIndex].position = position;
+			int originalValue;
+			InterlockedAdd(ddgiClearCommand[0].x, 1, originalValue);
+			ddgiClearIndices[originalValue] = DDGIClearIndex(probeIndex.x, cascadeIndex);
+		}
+	}
+	GroupMemoryBarrierWithGroupSync();
+
 	RayDesc probeRayDesc;
-	probeRayDesc.Origin = ddgiProbePositions
-	[probeIndex.x * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z +
-	 probeIndex.y * DDGI_PROBE_DIMENSIONS.z + probeIndex.z];
+	probeRayDesc.Origin = ddgiProbes[globalProbeIndex].position + ddgiProbes[globalProbeIndex].offset;
 	probeRayDesc.Direction = ddgiProbeSamples[rayIndex.x];
 	probeRayDesc.TMin = EPSILON;
 	probeRayDesc.TMax = 1e4;
@@ -16,8 +42,6 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 	uint rayFlags = RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES;
 
 	probeQuery.TraceRayInline(accelerationStructure, rayFlags, 0xFF, probeRayDesc);
-
-	float3 candidateTransmittanceFactor = float3(1);
 	while (probeQuery.Proceed()) {
 		uint instanceIndex = probeQuery.CandidateRayInstanceCustomIndex();
 		uint primIndex = probeQuery.CandidatePrimitiveIndex();
@@ -36,10 +60,6 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 		} else {
 			if (intersectionColor.a == 1.0) {
 				probeQuery.CommitNonOpaqueTriangleHit();
-			} else {
-				float absorptionStrength = intersectionColor.a * 2.0;
-				float3 absorptionCoefficient = (1.0 - intersectionColor.rgb) * absorptionStrength;
-				candidateTransmittanceFactor *= exp(-absorptionCoefficient);
 			}
 		}
 	}
@@ -102,9 +122,7 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 			roughness,
 			ao,
 			currMaterial.alphaMode,
-			ddgiProbePositions
-			[probeIndex.x * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z +
-			 probeIndex.y * DDGI_PROBE_DIMENSIONS.z + probeIndex.z]
+			ddgiProbes[globalProbeIndex].position
 		);
 		sampledRadiance = intersectionPointRadiance.rgb;
 		sampledDistance =
@@ -135,21 +153,15 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 		}
 		sampledRadiance *= transmittanceFactor;
 	} else {
-		sampledRadiance =
-			float3(0) * candidateTransmittanceFactor; // code for sampling sky box goes here
+		sampledRadiance = float3(0); // code for sampling sky box goes here
 		sampledDistance = 1.5;
 	}
-	ddgiRadianceTransmissionTexture.Store(
-		{ rayIndex.x,
-		  probeIndex.x * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z +
-			  probeIndex.y * DDGI_PROBE_DIMENSIONS.z + probeIndex.z },
-		sampledRadiance
-	);
-	ddgiDistanceTransmissionTexture.Store(
-		{ rayIndex.x,
-		  probeIndex.x * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z +
-			  probeIndex.y * DDGI_PROBE_DIMENSIONS.z + probeIndex.z },
-		sampledDistance
-	);
+	int2 transmissionIndex =
+		int2((cascadeIndex % 2) * RAY_COUNT, (cascadeIndex / 2) * PROBES_PER_CASCADE) +
+		int2(rayIndex.x, probeIndex.x);
+	ddgiRadianceTransmissionTexture.Store(transmissionIndex, sampledRadiance);
+	ddgiDistanceTransmissionTexture.Store(transmissionIndex, sampledDistance);
+
+	probeMinimumDistance.min(sampledDistance);
 }
 

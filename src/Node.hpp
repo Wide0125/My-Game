@@ -1,6 +1,8 @@
 #ifndef MODELINSTANCE_HPP
 #define MODELINSTANCE_HPP
 
+#include <optional>
+
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #ifndef GLM_ENABLE_EXPERIMENTAL

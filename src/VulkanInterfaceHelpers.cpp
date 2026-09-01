@@ -1,3 +1,4 @@
+#include <cassert>
 #include <fstream>
 
 #include "VulkanInterface.hpp"
@@ -299,14 +300,10 @@ void VulkanInterface::cleanup() {
 			m_ddgiProbeSampleAllocations[frameIndex]
 		);
 		vmaDestroyBuffer(
-			m_allocator,
-			m_ddgiProbeBoundsBuffers[frameIndex],
-			m_ddgiProbeBoundsAllocations[frameIndex]
+			m_allocator, m_ddgiCascadeBuffers[frameIndex], m_ddgiCascadeAllocations[frameIndex]
 		);
 		vmaDestroyBuffer(
-			m_allocator,
-			m_ddgiProbePositionBuffers[frameIndex],
-			m_ddgiProbePositionAllocations[frameIndex]
+			m_allocator, m_ddgiProbeBuffers[frameIndex], m_ddgiProbeAllocations[frameIndex]
 		);
 		vmaDestroyBuffer(
 			m_allocator,
@@ -314,6 +311,7 @@ void VulkanInterface::cleanup() {
 			m_ddgiClearIndexAllocations[frameIndex]
 		);
 	}
+	vmaDestroyBuffer(m_allocator, m_ddgiBaseDimensionsBuffer, m_ddgiBaseDimensionsAllocation);
 	vmaDestroyImage(m_allocator, m_ddgiIrradianceImage, m_ddgiIrradianceAllocation);
 	vmaDestroyImage(m_allocator, m_ddgiDepthImage, m_ddgiDepthAllocation);
 	vmaDestroyImage(
@@ -358,7 +356,7 @@ void VulkanInterface::copyBuffer(
 }
 
 vk::DescriptorPoolCreateInfo VulkanInterface::createDescriptorPool(uint32_t textureCount) const {
-	std::array<vk::DescriptorPoolSize, 20> poolSize {
+	std::array<vk::DescriptorPoolSize, 22> poolSize {
 		{{.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
@@ -382,7 +380,9 @@ vk::DescriptorPoolCreateInfo VulkanInterface::createDescriptorPool(uint32_t text
 		  .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eCombinedImageSampler,
 		  .descriptorCount = MAX_FRAMES_IN_FLIGHT},
-		 {.type = vk::DescriptorType::eStorageImage, .descriptorCount = MAX_FRAMES_IN_FLIGHT}}
+		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT}}
 	};
 	vk::DescriptorPoolCreateInfo poolInfo {
 		.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
@@ -394,7 +394,7 @@ vk::DescriptorPoolCreateInfo VulkanInterface::createDescriptorPool(uint32_t text
 }
 vk::raii::DescriptorSetLayout
 VulkanInterface::createDescriptorSetLayout(uint32_t textureCount) const {
-	std::array<vk::DescriptorSetLayoutBinding, 20> bindings {
+	std::array<vk::DescriptorSetLayoutBinding, 22> bindings {
 		{{0, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr},
 		 {.binding = 1,
 		  .descriptorType = vk::DescriptorType::eUniformBuffer,
@@ -488,9 +488,19 @@ VulkanInterface::createDescriptorSetLayout(uint32_t textureCount) const {
 		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
 		  .pImmutableSamplers = nullptr},
 		 {.binding = 19,
-		  .descriptorType = vk::DescriptorType::eStorageImage,
+		  .descriptorType = vk::DescriptorType::eUniformBuffer,
 		  .descriptorCount = 1,
-		  .stageFlags = vk::ShaderStageFlagBits::eCompute | vk::ShaderStageFlagBits::eFragment,
+		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
+		  .pImmutableSamplers = nullptr},
+		 {.binding = 20,
+		  .descriptorType = vk::DescriptorType::eStorageBuffer,
+		  .descriptorCount = 1,
+		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
+		  .pImmutableSamplers = nullptr},
+		 {.binding = 21,
+		  .descriptorType = vk::DescriptorType::eUniformBuffer,
+		  .descriptorCount = 1,
+		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
 		  .pImmutableSamplers = nullptr}}
 	};
 	vk::DescriptorSetLayoutCreateInfo layoutInfo {
@@ -662,6 +672,33 @@ void VulkanInterface::computeTangents(
 	};
 	genTangSpaceDefault(&context);
 } // compute tangents for a single sub mesh
+size_t VulkanInterface::probeCoordinatesToIndex(const glm::ivec3& position, DDGICascade& cascade) {
+	assert(
+		position.x % cascade.gridSpacing == 0 and position.y % cascade.gridSpacing == 0 and
+		position.z % cascade.gridSpacing == 0
+	);
+	glm::ivec3 newVector {
+		(position / cascade.gridSpacing + DDGI_CASCADE_BASE_DIMENSIONS / 2) %
+		(DDGI_CASCADE_BASE_DIMENSIONS + glm::ivec3 {1, 1, 1})
+	};
+	if (newVector.x < 0) {
+		newVector.x += DDGI_CASCADE_BASE_DIMENSIONS.x;
+	}
+	if (newVector.y < 0) {
+		newVector.y += DDGI_CASCADE_BASE_DIMENSIONS.y;
+	}
+	if (newVector.z < 0) {
+		newVector.z += DDGI_CASCADE_BASE_DIMENSIONS.z;
+	}
+	return newVector.x * (DDGI_CASCADE_BASE_DIMENSIONS.y + 1) *
+			   (DDGI_CASCADE_BASE_DIMENSIONS.z + 1) +
+		   newVector.y * (DDGI_CASCADE_BASE_DIMENSIONS.z + 1) + newVector.z;
+} // does not do any bounds checking
+bool VulkanInterface::withinBounds(const glm::ivec3& position, const Bounds& bounds) {
+	glm::bvec3 lessBool {glm::lessThanEqual(position, bounds.upperBounds)};
+	glm::bvec3 greaterBool {glm::greaterThanEqual(position, bounds.lowerBounds)};
+	return glm::all(lessBool) and glm::all(greaterBool);
+}
 
 // draw helper functions
 void VulkanInterface::recreateSwapChain() {
@@ -713,7 +750,7 @@ void VulkanInterface::transitionImageLayoutPipeline(
 	};
 	m_commandBuffers[m_frameIndex].pipelineBarrier2(dependency_info);
 }
-void VulkanInterface::updateBuffers() {
+void VulkanInterface::updateBuffers(bool cameraMoved) {
 	DrawCallBufferObject vpTransform {
 		m_currentScene->getCameraPosition(),
 		lookAt(
@@ -753,8 +790,7 @@ void VulkanInterface::updateBuffers() {
 		0,
 		sizeof(ModelTransformBufferObject) * modelTransforms.size()
 	);
-	if (m_currentScene->handleCameraMovement(DDGI_PROBE_DIMENSIONS)) {
-		restructureDdgiProbes();
+	if (cameraMoved) {
 		std::vector<DrawIndirectCommand> drawCommands {};
 		std::vector<SubMeshMetadataBufferObject> metaData {};
 		drawCommands.reserve(m_currentScene->getModelInstancesPerMesh().size() * m_subMeshCount);
@@ -790,21 +826,13 @@ void VulkanInterface::updateBuffers() {
 			sizeof(metaData[0]) * metaData.size()
 		);
 
-		vmaCopyMemoryToAllocation(
-			m_allocator,
-			m_ddgiProbePositions.data(),
-			m_ddgiProbePositionAllocations[m_frameIndex],
-			0,
-			sizeof(m_ddgiProbePositions[0]) * m_ddgiProbePositions.size()
-		);
-
 		if (m_drawDdgiProbes) {
 			std::vector<ModelTransformBufferObject> ddgiProbeTransformations {};
-			ddgiProbeTransformations.reserve(m_ddgiProbePositions.size());
+			ddgiProbeTransformations.reserve(m_ddgiProbes.size());
 			uint32_t probeIndex {0};
-			for (const auto& position: m_ddgiProbePositions) {
+			for (const auto& probe: m_ddgiProbes) {
 				ddgiProbeTransformations.emplace_back(
-					glm::translate(position) * glm::scale(glm::vec3 {0.1, 0.1, 0.1}),
+					glm::translate(probe.position) * glm::scale(glm::vec3 {0.1, 0.1, 0.1}),
 					glm::mat4 {},
 					probeIndex
 				);
@@ -812,7 +840,7 @@ void VulkanInterface::updateBuffers() {
 			}
 			DrawIndirectCommand probeDrawCommand {
 				m_meshes[DDGI_MODEL_INDEX].subMeshes[0].indexCount,
-				static_cast<uint32_t>(m_ddgiProbePositions.size()),
+				static_cast<uint32_t>(m_ddgiProbes.size()),
 				m_meshes[DDGI_MODEL_INDEX].subMeshes[0].indexStart,
 				static_cast<int32_t>(m_meshes[DDGI_MODEL_INDEX].subMeshes[0].vertexOffset),
 				static_cast<uint32_t>(m_currentScene->getModelInstanceTransforms().size())
@@ -825,8 +853,9 @@ void VulkanInterface::updateBuffers() {
 				m_allocator,
 				ddgiProbeTransformations.data(),
 				m_modelTransformAllocations[m_frameIndex],
-				sizeof(ModelTransformBufferObject) * modelTransforms.size(),
-				sizeof(ModelTransformBufferObject) * m_ddgiProbePositions.size()
+				sizeof(ModelTransformBufferObject) *
+					m_currentScene->getModelInstanceTransforms().size(),
+				sizeof(ModelTransformBufferObject) * m_ddgiProbes.size()
 			);
 			vmaCopyMemoryToAllocation(
 				m_allocator,
@@ -845,19 +874,25 @@ void VulkanInterface::updateBuffers() {
 				sizeof(SubMeshMetadataBufferObject)
 			);
 		}
+	}
+}
+void VulkanInterface::updateDdgi(int cascadeIndex1, int cascadeIndex2) {
+	DDGICascadeGPU cascade {m_ddgiCascades[cascadeIndex1]};
+	vmaCopyMemoryToAllocation(
+		m_allocator,
+		&cascade,
+		m_ddgiCascadeAllocations[m_frameIndex],
+		sizeof(DDGICascadeGPU) * cascadeIndex1,
+		sizeof(DDGICascadeGPU)
+	);
+	if (cascadeIndex2 != -1) {
+		cascade = m_ddgiCascades[cascadeIndex2];
 		vmaCopyMemoryToAllocation(
 			m_allocator,
-			&(m_currentScene->getDdgiProbeBounds()),
-			m_ddgiProbeBoundsAllocations[m_frameIndex],
-			0,
-			sizeof(DDGIProbeBounds)
-		);
-		vmaCopyMemoryToAllocation(
-			m_allocator,
-			m_ddgiClearIndices.data(),
-			m_ddgiClearIndexAllocations[m_frameIndex],
-			0,
-			sizeof(uint32_t) * m_ddgiClearIndices.size()
+			&cascade,
+			m_ddgiCascadeAllocations[m_frameIndex],
+			sizeof(DDGICascadeGPU) * cascadeIndex2,
+			sizeof(DDGICascadeGPU)
 		);
 	}
 	vmaCopyMemoryToAllocation(
@@ -866,6 +901,14 @@ void VulkanInterface::updateBuffers() {
 		m_ddgiProbeSampleAllocations[m_frameIndex],
 		0,
 		sizeof(glm::vec3) * DDGI_PROBE_SAMPLES
+	);
+	vk::DispatchIndirectCommand clearDispatchCommand {0, 1, 1};
+	vmaCopyMemoryToAllocation(
+		m_allocator,
+		&clearDispatchCommand,
+		m_ddgiClearDispatchCommandAllocations[m_frameIndex],
+		0,
+		sizeof(clearDispatchCommand)
 	);
 }
 void VulkanInterface::updateTlas() {
@@ -984,39 +1027,6 @@ void VulkanInterface::updateTlas() {
 		m_currentScene->finishHandlingModelUpdates();
 	}
 }
-void VulkanInterface::restructureDdgiProbes() {
-	m_ddgiClearIndices.clear();
-	const DDGIProbeBounds& bounds {m_currentScene->getDdgiProbeBounds()};
-	for (int x {bounds.xLower}; x <= bounds.xUpper; ++x) {
-		for (int y {bounds.yLower}; y <= bounds.yUpper; ++y) {
-			for (int z {bounds.zLower}; z <= bounds.zUpper; ++z) {
-				size_t index {probeCoordinatesToIndex(x, y, z)};
-				if (m_ddgiProbePositions[index] != glm::vec3 {x, y, z}) {
-					m_ddgiProbePositions[index] = glm::vec3 {x, y, z};
-					m_ddgiClearIndices.push_back(index);
-				}
-			}
-		}
-	}
-}
-size_t VulkanInterface::probeCoordinatesToIndex(int x, int y, int z) const {
-	const glm::vec3& cameraPosition {m_currentScene->getCameraPosition()};
-	int newX {(x + DDGI_PROBE_DIMENSIONS.x / 2 - 1) % DDGI_PROBE_DIMENSIONS.x};
-	if (newX < 0) {
-		newX += DDGI_PROBE_DIMENSIONS.x;
-	}
-	int newY {(y + DDGI_PROBE_DIMENSIONS.y / 2 - 1) % DDGI_PROBE_DIMENSIONS.y};
-	if (newY < 0) {
-		newY += DDGI_PROBE_DIMENSIONS.y;
-	}
-	int newZ {(z + DDGI_PROBE_DIMENSIONS.z / 2 - 1) % DDGI_PROBE_DIMENSIONS.z};
-	if (newZ < 0) {
-		newZ += DDGI_PROBE_DIMENSIONS.z;
-	}
-	return newX * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z +
-		   newY * DDGI_PROBE_DIMENSIONS.z + newZ;
-}
-
 std::vector<glm::vec3> VulkanInterface::distributePointsOnUnitSphere(int samples) const {
 	PRNG rng {};
 	float rotationAngleX {static_cast<float>(rng.getRandomFloat() * 2 * std::numbers::pi)};
@@ -1040,3 +1050,19 @@ std::vector<glm::vec3> VulkanInterface::distributePointsOnUnitSphere(int samples
 	}
 	return points;
 }
+bool VulkanInterface::nextFrame(
+	int FPS,
+	std::chrono::time_point<std::chrono::steady_clock, std::chrono::duration<double, std::milli>>&
+		lastFrame
+) {
+	std::chrono::duration<double, std::milli> duration {
+		std::chrono::steady_clock::now() - lastFrame
+	};
+	std::chrono::duration<double, std::milli> mspf {1000 / static_cast<double>(FPS)};
+	if (duration >= mspf) {
+		lastFrame += std::chrono::duration<double, std::milli> {mspf * std::floor(duration / mspf)};
+		return true;
+	}
+	return false;
+} // determines if time since last frame is longer than or equal to the time between frames given
+  // a framerate, and updates lastFrame to sync

@@ -1,3 +1,5 @@
+#include <print>
+
 #ifndef GLM_ENABLE_EXPERIMENTAL
 #define GLM_ENABLE_EXPERIMENTAL
 #endif
@@ -7,7 +9,20 @@
 #include "VulkanInterface.hpp"
 
 void VulkanInterface::drawFrame() {
-	updateBuffers();
+	bool cameraMoved {m_currentScene->handleCameraMovement()};
+	updateBuffers(cameraMoved);
+	bool ddgiOperations {nextFrame(DDGI_FRAMERATE, m_ddgiLastFrame)};
+	int secondaryDdgiOperationIndex {-1};
+	if (ddgiOperations) {
+		if (m_ddgiFrameIndex % 2 == 0) {
+			secondaryDdgiOperationIndex = 1;
+		} else if (m_ddgiFrameIndex % 4 == 3) {
+			secondaryDdgiOperationIndex = 2;
+		} else if (m_ddgiFrameIndex % 8 == 1) {
+			secondaryDdgiOperationIndex = 3;
+		}
+		updateDdgi(0, secondaryDdgiOperationIndex);
+	}
 	auto fenceResult =
 		m_device.waitForFences(*m_inFlightFences[m_frameIndex], vk::True, UINT64_MAX);
 	if (fenceResult != vk::Result::eSuccess) {
@@ -85,66 +100,65 @@ void VulkanInterface::drawFrame() {
 		.pColorAttachments = &colorAttachmentInfo,
 		.pDepthAttachment = &depthAttachmentInfo
 	};
+	if (ddgiOperations) {
+		commandBuffer.bindDescriptorSets(
+			vk::PipelineBindPoint::eCompute,
+			m_computeRaySamplePipelineLayout,
+			0,
+			*m_descriptorSets[m_frameIndex],
+			nullptr
+		);
 
-	commandBuffer.bindDescriptorSets(
-		vk::PipelineBindPoint::eCompute,
-		m_computeRaySamplePipelineLayout,
-		0,
-		*m_descriptorSets[m_frameIndex],
-		nullptr
-	);
+		commandBuffer.bindPipeline(
+			vk::PipelineBindPoint::eCompute, m_computeRaySamplePipeline
+		); // compute
+		commandBuffer.dispatch(m_ddgiProbes.size(), 1, 1);
 
-	commandBuffer.bindPipeline(
-		vk::PipelineBindPoint::eCompute, m_computeRaySamplePipeline
-	); // compute
-	commandBuffer.dispatch(
-		DDGI_PROBE_DIMENSIONS.x, DDGI_PROBE_DIMENSIONS.y, DDGI_PROBE_DIMENSIONS.z
-	);
+		commandBuffer.bindPipeline(
+			vk::PipelineBindPoint::eCompute, m_computeProbeIrradianceClearPipeline
+		);
+		commandBuffer.dispatch(m_ddgiClearIndices.size(), 1, 1);
+		commandBuffer.bindPipeline(
+			vk::PipelineBindPoint::eCompute, m_computeProbeDepthClearPipeline
+		);
+		commandBuffer.dispatch(m_ddgiClearIndices.size(), 1, 1);
 
-	commandBuffer.bindPipeline(
-		vk::PipelineBindPoint::eCompute, m_computeProbeIrradianceClearPipeline
-	);
-	commandBuffer.dispatch(m_ddgiClearIndices.size(), 1, 1);
-	commandBuffer.bindPipeline(
-		vk::PipelineBindPoint::eCompute, m_computeProbeDepthClearPipeline
-	);
-	commandBuffer.dispatch(m_ddgiClearIndices.size(), 1, 1);
+		m_pipelineMemoryBarrier = {
+			.srcStageMask = vk::PipelineStageFlagBits2::eComputeShader |
+							vk::PipelineStageFlagBits2::eFragmentShader,
+			.srcAccessMask = vk::AccessFlagBits2::eShaderWrite,
+			.dstStageMask = vk::PipelineStageFlagBits2::eComputeShader,
+			.dstAccessMask = vk::AccessFlagBits2::eShaderRead
+		};
+		m_pipelineDependencyInfo = {
+			.memoryBarrierCount = 1, .pMemoryBarriers = &m_pipelineMemoryBarrier
+		};
+		commandBuffer.pipelineBarrier2(m_pipelineDependencyInfo);
 
-	m_pipelineMemoryBarrier = {
-		.srcStageMask = vk::PipelineStageFlagBits2::eComputeShader |
-						vk::PipelineStageFlagBits2::eFragmentShader,
-		.srcAccessMask = vk::AccessFlagBits2::eShaderWrite,
-		.dstStageMask = vk::PipelineStageFlagBits2::eComputeShader,
-		.dstAccessMask = vk::AccessFlagBits2::eShaderRead
-	};
-	m_pipelineDependencyInfo = {
-		.memoryBarrierCount = 1, .pMemoryBarriers = &m_pipelineMemoryBarrier
-	};
-	commandBuffer.pipelineBarrier2(m_pipelineDependencyInfo);
+		commandBuffer.bindPipeline(
+			vk::PipelineBindPoint::eCompute, m_computeProbeIrradianceUpdatePipeline
+		);
+		commandBuffer.dispatch(m_ddgiProbes.size(), 1, 1);
 
-	commandBuffer.bindPipeline(
-		vk::PipelineBindPoint::eCompute, m_computeProbeIrradianceUpdatePipeline
-	);
-	commandBuffer.dispatch(
-		DDGI_PROBE_DIMENSIONS.x, DDGI_PROBE_DIMENSIONS.y, DDGI_PROBE_DIMENSIONS.z
-	);
+		commandBuffer.bindPipeline(
+			vk::PipelineBindPoint::eCompute, m_computeProbeDepthUpdatePipeline
+		);
+		commandBuffer.dispatch(m_ddgiProbes.size(), 1, 1);
 
-	commandBuffer.bindPipeline(vk::PipelineBindPoint::eCompute,
-	m_computeProbeDepthUpdatePipeline); commandBuffer.dispatch( 	DDGI_PROBE_DIMENSIONS.x,
-	DDGI_PROBE_DIMENSIONS.y, DDGI_PROBE_DIMENSIONS.z
-	);
+		m_pipelineMemoryBarrier = {
+			.srcStageMask = vk::PipelineStageFlagBits2::eComputeShader,
+			.srcAccessMask = vk::AccessFlagBits2::eShaderWrite,
+			.dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader |
+							vk::PipelineStageFlagBits2::eComputeShader,
+			.dstAccessMask = vk::AccessFlagBits2::eShaderRead
+		};
+		m_pipelineDependencyInfo = {
+			.memoryBarrierCount = 1, .pMemoryBarriers = &m_pipelineMemoryBarrier
+		};
+		commandBuffer.pipelineBarrier2(m_pipelineDependencyInfo);
 
-	m_pipelineMemoryBarrier = {
-		.srcStageMask = vk::PipelineStageFlagBits2::eComputeShader,
-		.srcAccessMask = vk::AccessFlagBits2::eShaderWrite,
-		.dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader |
-						vk::PipelineStageFlagBits2::eComputeShader,
-		.dstAccessMask = vk::AccessFlagBits2::eShaderRead
-	};
-	m_pipelineDependencyInfo = {
-		.memoryBarrierCount = 1, .pMemoryBarriers = &m_pipelineMemoryBarrier
-	};
-	commandBuffer.pipelineBarrier2(m_pipelineDependencyInfo);
+		m_ddgiFrameIndex = (m_ddgiFrameIndex + 1) % DDGI_FRAMERATE;
+	}
 
 	commandBuffer.beginRendering(renderingInfo);
 	commandBuffer.bindDescriptorSets(

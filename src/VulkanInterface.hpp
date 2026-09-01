@@ -109,12 +109,37 @@ struct tlasLutBufferObject {
 	uint32_t vertexStart {};
 };
 
-struct DrawIndirectCommand {
-	uint32_t indexCount {};
-	uint32_t instanceCount {};
-	uint32_t firstIndex {};
-	int32_t vertexOffset {};
-	uint32_t firstInstance {};
+struct Bounds {
+	glm::ivec3 upperBounds {};
+	glm::ivec3 lowerBounds {};
+};
+struct DDGICascade {
+	glm::ivec3 outerDimensions {}; // total inclusive volume occupied by cascade
+	glm::ivec3 innerDimensions {0, 0, 0};
+	int gridSpacing {1};
+	Bounds outerBounds {};
+	Bounds innerBounds {};
+	int probeCount {};
+	int innerProbeCount {};
+};
+struct DDGICascadeGPU {
+	DDGICascadeGPU(const DDGICascade& cascade)
+		: gridSpacing {cascade.gridSpacing}, outerBounds {cascade.outerBounds},
+		  innerBounds {cascade.innerBounds} {}
+	int gridSpacing {};
+	Bounds outerBounds {};
+	Bounds innerBounds {};
+};
+
+struct DDGIProbe {
+	glm::ivec3 position {};
+	bool active {};
+	glm::vec3 offset {};
+};
+
+struct DDGIClearIndex {
+	uint32_t probeIndex {};
+	uint32_t cascadeIndex {};
 };
 
 class VulkanInterface {
@@ -130,12 +155,12 @@ class VulkanInterface {
 	GLFWwindow* const getWindow() const { return m_window; }
 
 	static constexpr int MAX_FRAMES_IN_FLIGHT {2};
-	static constexpr int DDGI_LEVELS {1};
-	static constexpr glm::ivec3 DDGI_PROBE_DIMENSIONS {32, 32, 4}; // x, y, z
-
+	static constexpr int DDGI_LEVELS {4};
+	static constexpr glm::ivec3 DDGI_CASCADE_BASE_DIMENSIONS {32, 32, 4};
 	static constexpr int DDGI_PROBE_SAMPLES {192};
-
 	static constexpr int DDGI_MODEL_INDEX {1};
+
+	static constexpr int DDGI_FRAMERATE {60};
 
 #ifdef NDEBUG
 	bool m_drawDdgiProbes {false};
@@ -281,12 +306,16 @@ class VulkanInterface {
 	vk::DeviceSize m_accelerationStructureScratchOffset {};
 
 	uint32_t m_frameIndex {0};
+	uint32_t m_ddgiFrameIndex {0};
+	std::chrono::time_point<std::chrono::steady_clock, std::chrono::duration<double, std::milli>>
+		m_ddgiLastFrame {std::chrono::steady_clock::now()};
 
-	class DDGIVolume;
+	std::array<DDGICascade, DDGI_LEVELS> m_ddgiCascades {};
 
-	std::vector<glm::vec3> m_ddgiProbePositions {};
-	std::array<vk::Buffer, MAX_FRAMES_IN_FLIGHT> m_ddgiProbePositionBuffers {};
-	std::array<VmaAllocation, MAX_FRAMES_IN_FLIGHT> m_ddgiProbePositionAllocations {};
+	int m_ddgiTotalProbeCount {};
+
+	vk::Buffer m_ddgiProbeBuffer {};
+	VmaAllocation m_ddgiProbeAllocation {};
 
 	vk::Image m_ddgiIrradianceImage {};
 	VmaAllocation m_ddgiIrradianceAllocation {};
@@ -296,11 +325,14 @@ class VulkanInterface {
 	VmaAllocation m_ddgiDepthAllocation {};
 	vk::raii::ImageView m_ddgiDepthImageView {nullptr};
 
+	std::array<vk::Buffer, MAX_FRAMES_IN_FLIGHT> m_ddgiCascadeBuffers {};
+	std::array<VmaAllocation, MAX_FRAMES_IN_FLIGHT> m_ddgiCascadeAllocations {};
+
+	vk::Buffer m_ddgiBaseDimensionsBuffer {};
+	VmaAllocation m_ddgiBaseDimensionsAllocation {};
+
 	std::array<vk::Buffer, MAX_FRAMES_IN_FLIGHT> m_ddgiProbeSampleBuffers {};
 	std::array<VmaAllocation, MAX_FRAMES_IN_FLIGHT> m_ddgiProbeSampleAllocations {};
-
-	std::array<vk::Buffer, MAX_FRAMES_IN_FLIGHT> m_ddgiProbeBoundsBuffers {};
-	std::array<VmaAllocation, MAX_FRAMES_IN_FLIGHT> m_ddgiProbeBoundsAllocations {};
 
 	vk::raii::Sampler m_ddgiTextureSampler {nullptr};
 
@@ -316,10 +348,10 @@ class VulkanInterface {
 	VmaAllocation m_ddgiDepthSampleCountAllocation {};
 	vk::raii::ImageView m_ddgiDepthSampleCountImageView {nullptr};
 
-	std::vector<uint32_t> m_ddgiClearIndices {};
-
-	std::array<vk::Buffer, MAX_FRAMES_IN_FLIGHT> m_ddgiClearIndexBuffers {};
-	std::array<VmaAllocation, MAX_FRAMES_IN_FLIGHT> m_ddgiClearIndexAllocations {};
+	vk::Buffer m_ddgiClearIndicesBuffer {};
+	VmaAllocation m_ddgiClearIndicesAllocation {};
+	std::array<vk::Buffer, MAX_FRAMES_IN_FLIGHT> m_ddgiClearDispatchCommandBuffers {};
+	std::array<VmaAllocation, MAX_FRAMES_IN_FLIGHT> m_ddgiClearDispatchCommandAllocations {};
 
 	vk::MemoryBarrier2 m_pipelineMemoryBarrier {};	// reusable memory barrier
 	vk::DependencyInfo m_pipelineDependencyInfo {}; // reusable dependency info
@@ -418,7 +450,8 @@ class VulkanInterface {
 
 	void createTextureSamplers(const fastgltf::Asset&);
 
-	void createDdgiProbes();
+	void createDdgiCascades();
+	void createDdgiResources();
 
 	void copyBuffer(vk::Buffer& srcBuffer, vk::Buffer& dstBuffer, vk::DeviceSize size) const;
 	void loadMeshes(const fastgltf::Asset&);
@@ -454,6 +487,7 @@ class VulkanInterface {
 
 	void createGraphicsPipeline();
 	void createComputePipelines();
+	static bool withinBounds(const glm::ivec3& position, const Bounds& bounds);
 
 	void transitionImageLayoutPipeline(
 		vk::Image,
@@ -465,12 +499,18 @@ class VulkanInterface {
 		vk::PipelineStageFlags2,
 		vk::ImageAspectFlags
 	);
-	void updateBuffers();
+	void updateBuffers(bool cameraMoved);
+	void updateDdgi(int cascadeIndex1, int cascadeIndex2);
 	void updateTlas();
-	void restructureDdgiProbes();
-	size_t probeCoordinatesToIndex(int, int, int) const;
+	static size_t probeCoordinatesToIndex(const glm::ivec3& position, DDGICascade& cascade);
 	void recreateSwapChain();
 	std::vector<glm::vec3> distributePointsOnUnitSphere(int samples) const;
+	static bool nextFrame(
+		int FPS,
+		std::chrono::time_point<
+			std::chrono::steady_clock,
+			std::chrono::duration<double, std::milli>>& lastFrame
+	);
 };
 
 #endif // !VULKANINTERFACE_HPP

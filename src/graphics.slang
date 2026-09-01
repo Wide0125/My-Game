@@ -1,11 +1,26 @@
-import bindings;
-import lighting;
+import GraphicsBindings;
+import ComputeBindings;
+import Lighting;
+import Constants;
 
 [shader("vertex")]
 VSOutput
 vertMain(VSInput input, uint instanceID: SV_VulkanInstanceID, uint drawIndex: SV_DrawIndex) {
 	VSOutput output;
-	float4 worldPosition = mul(modelTransform[instanceID].model, float4(input.position, 1.0));
+	float4 worldPosition;
+	if (metadata[drawIndex].type == MeshType::PROBE) {
+		output.probeIndex = modelTransform[instanceID].probeIndex;
+		output.probeOrigin = ddgiProbes[output.probeIndex].position;
+		float4x4 probeTransform = float4x4(
+			float4(0.1, 0, 0, output.probeOrigin.x),
+			float4(0, 0.1, 0, output.probeOrigin.y),
+			float4(0, 0, 0.1, output.probeOrigin.z),
+			float4(0, 0, 0, 1)
+		);
+		worldPosition = mul(probeTransform, float4(input.position, 1.0));
+	} else {
+		worldPosition = mul(modelTransform[instanceID].model, float4(input.position, 1.0));
+	}
 	output.position = mul(vpTransform.projection, mul(vpTransform.view, worldPosition));
 	output.worldPosition = worldPosition.xyz;
 	output.color = input.color;
@@ -16,10 +31,6 @@ vertMain(VSInput input, uint instanceID: SV_VulkanInstanceID, uint drawIndex: SV
 	output.tangent.w = input.tangent.w;
 	output.materialIndex = metadata[drawIndex].materialIndex;
 	output.meshType = metadata[drawIndex].type;
-	if (metadata[drawIndex].type == MeshType::PROBE) {
-		output.probeOrigin = mul(modelTransform[instanceID].model, float4(0, 0, 0, 1)).xyz;
-		output.probeIndex = modelTransform[instanceID].probeIndex;
-	}
 	return output;
 }
 

@@ -98,8 +98,7 @@ void VulkanInterface::createInstance() {
 
 void VulkanInterface::createSurface() {
 	VkSurfaceKHR _surface {};
-	const auto error {glfwCreateWindowSurface(*m_instance, m_window, nullptr, &_surface
-	)};
+	const auto error {glfwCreateWindowSurface(*m_instance, m_window, nullptr, &_surface)};
 	if (error != 0) {
 		throw std::runtime_error("Failed to create window surface!");
 	}
@@ -173,6 +172,7 @@ void VulkanInterface::createLogicalDevice() {
 				 }},
 			{.storageBuffer16BitAccess = true, .shaderDrawParameters = true},
 			{.storageBuffer8BitAccess = true,
+			 .uniformAndStorageBuffer8BitAccess = true,
 			 .shaderInt8 = true,
 			 .descriptorIndexing = true,
 			 .shaderSampledImageArrayNonUniformIndexing = true,

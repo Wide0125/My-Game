@@ -2,15 +2,19 @@ import bindings;
 
 [shader("compute")]
 [numthreads(14, 14, 1)]
-void computeMain(uint3 probeID: SV_GroupID, uint3 localTexelUV: SV_GroupThreadID) {
+void computeMain(uint3 probeIndex: SV_GroupID, uint3 localTexelUV: SV_GroupThreadID) {
 	static groupshared uint counter;
 	static groupshared int probeIndex;
 	static groupshared int2 texelID;
 	if (localTexelUV.x == 0 && localTexelUV.y == 0) {
 		counter = 0;
-		probeIndex = probeID.x * DDGI_PROBE_DIMENSIONS.y * DDGI_PROBE_DIMENSIONS.z +
-					 probeID.y * DDGI_PROBE_DIMENSIONS.z + probeID.z;
-		texelID = { (probeIndex % 64) * 16 + 1, (probeIndex / 64) * 16 + 1 };
+		texelID =
+			int2(
+				((probeIndex.x / PROBES_PER_CASCADE) % 2) * DDGI_TEXTURE_SIZE * 16,
+				((probeIndex.x / PROBES_PER_CASCADE) / 2) * DDGI_TEXTURE_SIZE * 16
+			) +
+			int2((probeIndex.x % DDGI_TEXTURE_SIZE) * 16, (probeIndex.x / DDGI_TEXTURE_SIZE) * 16);
+		;
 	}
 	GroupMemoryBarrierWithGroupSync();
 
@@ -28,17 +32,21 @@ void computeMain(uint3 probeID: SV_GroupID, uint3 localTexelUV: SV_GroupThreadID
 	}
 	texelVector = normalize(texelVector);
 
-	int index = RAY_COUNT - int((texelVector.z + 1) / (2.f / RAY_COUNT)) - 4;
-
 	float distance = 0;
 	float distance2 = 0;
 	float accumulatedDots = 0;
 	int status = 0;
-	for (int currIndex = 0; currIndex <= RAY_COUNT; ++currIndex) {
+	int2 offsetUV = int2(
+		((probeIndex.x / PROBES_PER_CASCADE) % 2) * RAY_COUNT,
+		((probeIndex.x / PROBES_PER_CASCADE) / 2) * PROBES_PER_CASCADE
+	);
+	int index = RAY_COUNT - int((texelVector.z + 1) / (2.f / RAY_COUNT)) - 4;
+	for (int currIndex = index; currIndex <= index + 8; ++currIndex) {
 		float dot = dot(texelVector, ddgiProbeSamples[currIndex]);
 		if (dot >= 0.8) {
 			++status;
-			float currDistance = ddgiDistanceTransmissionTexture.Load( { currIndex, probeIndex });
+			float currDistance =
+				ddgiDistanceTransmissionTexture.Load(offsetUV + int2(currIndex, probeIndex.x % PROBES_PER_CASCADE));
 			distance += currDistance * dot;
 			distance2 += currDistance * currDistance * dot;
 			accumulatedDots += dot;
