@@ -102,3 +102,32 @@ int3 globalToStableCoordinates(int3 position, int gridSpacing) {
 		newVector.z += DDGI_BASE_DIMENSIONS.z + 1;
 	}
 }
+
+uint float3ToR6G5B5(float3 input) {
+	input = min(float3(1), input);
+	uint x = uint(input.x * (pow(2, 6) - 1));
+	x <<= 10;
+	uint y = uint(input.y * (pow(2, 5) - 1));
+	y <<= 5;
+	uint z = uint(input.z * (pow(2, 5) - 1));
+
+	return x | y | z;
+} // packs a float3 into r6g5b5 format using fixed point (assumes float3 is normalized, clamps if otherwise)
+
+float3 R6G5B5ToFloat3(uint input) {
+	uint xMask = 0b00000000000000001111110000000000;
+	uint yMask = 0b00000000000000000000001111100000;
+	uint zMask = 0b00000000000000000000000000011111;
+
+	uint x = input & xMask;
+	x >>= 10;
+	uint y = input & yMask;
+	y >>= 5;
+	uint z = input & zMask;
+
+	float3 output;
+	output.x = x / (pow(2, 6) - 1);
+	output.y = y / (pow(2, 5) - 1);
+	output.z = z / (pow(2, 5) - 1);
+	return output;
+} // unpacks a r6g5b5 uint into a float3, discarding the leftmost 16 bits

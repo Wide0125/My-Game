@@ -7,11 +7,14 @@ import Constants;
 [numthreads(RAY_COUNT, 1, 1)]
 void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID) {
 	static groupshared int globalProbeIndex;
-	static groupshared Atomic<int> probeMinimumDistance;
-	static groupshared Atomic<int> counter;
+	static groupshared Atomic<uint> probeMinimumDistance;
+	static groupshared Atomic<uint> probeMaximumDistance;
+	static groupshared Atomic<uint> counter;
 	if (rayIndex.x == 0) {
 		globalProbeIndex = probeIndex.x + cascadeIndex * PROBES_PER_CASCADE;
 		probeMinimumDistance = UINT32_MAX;
+		probeMaximumDistance = 0;
+		counter = 0;
 		if (withinBounds(
 				ddgiProbes[globalProbeIndex].position, ddgiCascades[cascadeIndex].innerBounds
 			)) {
@@ -33,7 +36,8 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 	GroupMemoryBarrierWithGroupSync();
 
 	RayDesc probeRayDesc;
-	probeRayDesc.Origin = ddgiProbes[globalProbeIndex].position + ddgiProbes[globalProbeIndex].offset;
+	probeRayDesc.Origin =
+		ddgiProbes[globalProbeIndex].position + ddgiProbes[globalProbeIndex].offset;
 	probeRayDesc.Direction = ddgiProbeSamples[rayIndex.x];
 	probeRayDesc.TMin = EPSILON;
 	probeRayDesc.TMax = 1e4;
@@ -162,8 +166,24 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 	ddgiRadianceTransmissionTexture.Store(transmissionIndex, sampledRadiance);
 	ddgiDistanceTransmissionTexture.Store(transmissionIndex, sampledDistance);
 
-	int distanceOffset = int(sampledDistance * pow(2, 15));
-	distanceOffset << 16;
-	probeMinimumDistance.min(sampledDistance);
+	uint distanceOffset = uint((sampledDistance / 1.5) * (pow(2, 16) - 1));
+	distanceOffset <<= 16;
+	distanceOffset | float3ToR6G5B5(sampledDistance);
+	probeMinimumDistance.min(distanceOffset);
+	probeMaximumDistance.max(distanceOffset);
+
+	if (counter.increment() == RAY_COUNT - 1) {
+		float minDistance = ((probeMinimumDistance.load() >> 16) / float(pow(2, 16) - 1)) * 1.5;
+		float maxDistance = ((probeMaximumDistance.load() >> 16) / float(pow(2, 16) - 1)) * 1.5;
+		if (maxDistance < ddgiCascades[cascadeIndex].gridSpacing / 2.f) {
+			ddgiProbes[globalProbeIndex].active = false;
+			return;
+		} else {
+			ddgiProbes[globalProbeIndex].active = true;
+		}
+		if (minDistance < MINIMUM_RAY_DISTANCE) {
+			ddgiProbes[globalProbeIndex].offset = -R6G5B5ToFloat3(probeMinimumDistance.load()) * (MINIMUM_RAY_DISTANCE - minDistance);
+		}
+	}
 }
 
