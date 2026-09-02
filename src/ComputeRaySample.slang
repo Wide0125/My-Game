@@ -182,7 +182,11 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 			ddgiProbes[globalProbeIndex].active = true;
 		}
 		if (minDistance < MINIMUM_RAY_DISTANCE) {
-			ddgiProbes[globalProbeIndex].offset = -R6G5B5ToFloat3(probeMinimumDistance.load()) * (MINIMUM_RAY_DISTANCE - minDistance);
+			ddgiProbes[globalProbeIndex].offset =
+				-R6G5B5ToFloat3(probeMinimumDistance.load()) * (MINIMUM_RAY_DISTANCE - minDistance);
+			int originalValue;
+			InterlockedAdd(ddgiClearCommand[0].x, 1, originalValue);
+			ddgiClearIndices[originalValue] = DDGIClearIndex(probeIndex.x, cascadeIndex); 
 		}
 	}
 }
