@@ -7,11 +7,11 @@ import Constants;
 [numthreads(RAY_COUNT, 1, 1)]
 void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID) {
 	static groupshared int globalProbeIndex;
-	static groupshared Atomic<float> probeMinimumDistance;
+	static groupshared Atomic<int> probeMinimumDistance;
 	static groupshared Atomic<int> counter;
 	if (rayIndex.x == 0) {
 		globalProbeIndex = probeIndex.x + cascadeIndex * PROBES_PER_CASCADE;
-		probeMinimumDistance = 1.5;
+		probeMinimumDistance = UINT32_MAX;
 		if (withinBounds(
 				ddgiProbes[globalProbeIndex].position, ddgiCascades[cascadeIndex].innerBounds
 			)) {
@@ -162,6 +162,8 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 	ddgiRadianceTransmissionTexture.Store(transmissionIndex, sampledRadiance);
 	ddgiDistanceTransmissionTexture.Store(transmissionIndex, sampledDistance);
 
+	int distanceOffset = int(sampledDistance * pow(2, 15));
+	distanceOffset << 16;
 	probeMinimumDistance.min(sampledDistance);
 }
 
