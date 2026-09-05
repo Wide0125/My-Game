@@ -1,5 +1,3 @@
-#include <print>
-
 #ifndef GLM_ENABLE_EXPERIMENTAL
 #define GLM_ENABLE_EXPERIMENTAL
 #endif
@@ -120,7 +118,7 @@ void VulkanInterface::drawFrame() {
 			sizeof(uint32_t),
 			&cascadeIndex
 		);
-		commandBuffer.dispatch(m_ddgiTotalProbeCount, 1, 1);
+		commandBuffer.dispatch(m_ddgiCascades[0].probeCount, 1, 1);
 		if (secondaryDdgiOperationIndex != -1) {
 			commandBuffer.pushConstants(
 				m_computeRaySamplePipelineLayout,
@@ -129,7 +127,7 @@ void VulkanInterface::drawFrame() {
 				sizeof(uint32_t),
 				&secondaryDdgiOperationIndex
 			);
-			commandBuffer.dispatch(m_ddgiTotalProbeCount, 1, 1);
+			commandBuffer.dispatch(m_ddgiCascades[secondaryDdgiOperationIndex].probeCount, 1, 1);
 		}
 		m_pipelineMemoryBarrier = {
 			.srcStageMask = vk::PipelineStageFlagBits2::eComputeShader,
@@ -166,44 +164,44 @@ void VulkanInterface::drawFrame() {
 			vk::PipelineBindPoint::eCompute, m_computeProbeIrradianceUpdatePipeline
 		);
 		commandBuffer.pushConstants(
-			m_computeRaySamplePipelineLayout,
+			m_computeProbeIrradianceUpdatePipelineLayout,
 			vk::ShaderStageFlagBits::eCompute,
 			0,
 			sizeof(uint32_t),
 			&cascadeIndex
 		);
-		commandBuffer.dispatch(m_ddgiTotalProbeCount, 1, 1);
+		commandBuffer.dispatch(m_ddgiCascades[0].probeCount, 1, 1);
 		if (secondaryDdgiOperationIndex != -1) {
 			commandBuffer.pushConstants(
-				m_computeRaySamplePipelineLayout,
+				m_computeProbeIrradianceUpdatePipelineLayout,
 				vk::ShaderStageFlagBits::eCompute,
 				0,
 				sizeof(uint32_t),
 				&secondaryDdgiOperationIndex
 			);
-			commandBuffer.dispatch(m_ddgiTotalProbeCount, 1, 1);
+			commandBuffer.dispatch(m_ddgiCascades[secondaryDdgiOperationIndex].probeCount, 1, 1);
 		}
 
 		commandBuffer.bindPipeline(
 			vk::PipelineBindPoint::eCompute, m_computeProbeDepthUpdatePipeline
 		);
 		commandBuffer.pushConstants(
-			m_computeRaySamplePipelineLayout,
+			m_computeProbeDepthUpdatePipelineLayout,
 			vk::ShaderStageFlagBits::eCompute,
 			0,
 			sizeof(uint32_t),
 			&cascadeIndex
 		);
-		commandBuffer.dispatch(m_ddgiTotalProbeCount, 1, 1);
+		commandBuffer.dispatch(m_ddgiCascades[0].probeCount, 1, 1);
 		if (secondaryDdgiOperationIndex != -1) {
 			commandBuffer.pushConstants(
-				m_computeRaySamplePipelineLayout,
+				m_computeProbeDepthUpdatePipelineLayout,
 				vk::ShaderStageFlagBits::eCompute,
 				0,
 				sizeof(uint32_t),
 				&secondaryDdgiOperationIndex
 			);
-			commandBuffer.dispatch(m_ddgiTotalProbeCount, 1, 1);
+			commandBuffer.dispatch(m_ddgiCascades[secondaryDdgiOperationIndex].probeCount, 1, 1);
 		}
 
 		m_pipelineMemoryBarrier = {

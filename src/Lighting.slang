@@ -223,7 +223,7 @@ uint probeCoordinatesToIndex(int3 position, int gridSpacing) {
 float3 getProbeIrradiance(float3 worldPosition, float3 N) {
 	int3 lowerBounds = int3(floor(worldPosition));
 	int cascadeIndex = -1;
-	for (int cascadeIndexTemp = 0; cascadeIndexTemp <= MAX_DDGI_CASCADES; ++cascadeIndexTemp) {
+	for (int cascadeIndexTemp = 0; cascadeIndexTemp < MAX_DDGI_CASCADES; ++cascadeIndexTemp) {
 		if (withinBounds(lowerBounds, ddgiCascades[cascadeIndexTemp].outerBounds)) {
 			cascadeIndex = cascadeIndexTemp;
 			break;

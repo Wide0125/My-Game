@@ -44,7 +44,7 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 localTexelUV: SV_GroupThrea
 		((probeIndex.x / PROBES_PER_CASCADE) % 2) * RAY_COUNT,
 		((probeIndex.x / PROBES_PER_CASCADE) / 2) * PROBES_PER_CASCADE
 	);
-	int index = RAY_COUNT - int((texelVector.z + 1) / (2.f / RAY_COUNT)) - 4;
+	int index = max(0, RAY_COUNT - int((texelVector.z + 1) / (2.f / RAY_COUNT)) - 4);
 	for (int currIndex = index; currIndex <= index + 8; ++currIndex) {
 		float dot = dot(texelVector, ddgiProbeSamples[currIndex]);
 		if (dot >= 0.8) {
