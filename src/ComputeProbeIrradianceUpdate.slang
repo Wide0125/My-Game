@@ -1,21 +1,26 @@
 import ComputeBindings;
+import Constants;
 
 [shader("compute")]
 [numthreads(6, 6, 1)]
 void computeMain(uint3 probeIndex: SV_GroupID, uint3 localTexelUV: SV_GroupThreadID) {
 	static groupshared uint counter;
-	static groupshared int probeIndex;
+	static groupshared uint globalProbeIndexTemp;
 	static groupshared int2 texelID;
 	if (localTexelUV.x == 0 && localTexelUV.y == 0) {
 		counter = 0;
+		globalProbeIndexTemp = PROBES_PER_CASCADE * CASCADE_INDEX;
 		texelID =
 			int2(
-				(cascadeIndex % 2) * DDGI_TEXTURE_SIZE * 8,
-				(cascadeIndex / 2) * DDGI_TEXTURE_SIZE * 8
+				(CASCADE_INDEX % 2) * DDGI_TEXTURE_SIZE * 8,
+				(CASCADE_INDEX / 2) * DDGI_TEXTURE_SIZE * 8
 			) +
 			int2((probeIndex.x % DDGI_TEXTURE_SIZE) * 8, (probeIndex.x / DDGI_TEXTURE_SIZE) * 8);
 	}
 	GroupMemoryBarrierWithGroupSync();
+	if (!ddgiProbes[globalProbeIndexTemp].active) {
+		return;
+	}
 
 	float texelX = localTexelUV.x - 2.5;
 	float texelY = localTexelUV.y - 2.5;
@@ -34,10 +39,8 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 localTexelUV: SV_GroupThrea
 	float3 irradiance = float3(0);
 	float weightSum = float(0);
 	int rayCount = 0;
-	int2 offsetTransmissionUV = int2(
-		(cascadeIndex % 2) * RAY_COUNT,
-		(cascadeIndex / 2) * PROBES_PER_CASCADE
-	);
+	int2 offsetTransmissionUV =
+		int2((CASCADE_INDEX % 2) * RAY_COUNT, (CASCADE_INDEX / 2) * PROBES_PER_CASCADE);
 	for (int x = 0; x < RAY_COUNT; ++x) {
 		float dotProduct = dot(texelVector, ddgiProbeSamples[x]);
 		if (dotProduct >= 0) {

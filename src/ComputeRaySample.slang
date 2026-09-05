@@ -6,34 +6,39 @@ import Constants;
 [shader("compute")]
 [numthreads(RAY_COUNT, 1, 1)]
 void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID) {
-	static groupshared int globalProbeIndex;
+	static groupshared uint globalProbeIndex;
 	static groupshared Atomic<uint> probeMinimumDistance;
 	static groupshared Atomic<uint> probeMaximumDistance;
 	static groupshared Atomic<uint> counter;
+	static groupshared bool probeDeactivated;
 	if (rayIndex.x == 0) {
-		globalProbeIndex = probeIndex.x + cascadeIndex * PROBES_PER_CASCADE;
+		globalProbeIndex = probeIndex.x + CASCADE_INDEX * PROBES_PER_CASCADE;
 		probeMinimumDistance = UINT32_MAX;
 		probeMaximumDistance = 0;
 		counter = 0;
+		probeDeactivated = false;
 		if (withinBounds(
-				ddgiProbes[globalProbeIndex].position, ddgiCascades[cascadeIndex].innerBounds
+				ddgiProbes[globalProbeIndex].position, ddgiCascades[CASCADE_INDEX].innerBounds
 			)) {
 			ddgiProbes[globalProbeIndex].active = false;
-			return;
+			probeDeactivated = true;
 		}
 		int3 position = indexToGlobalCoordinates(
 			probeIndex.x,
-			ddgiCascades[cascadeIndex].outerBounds,
-			ddgiCascades[cascadeIndex].gridSpacing
+			ddgiCascades[CASCADE_INDEX].outerBounds,
+			ddgiCascades[CASCADE_INDEX].gridSpacing
 		);
 		if (any(ddgiProbes[globalProbeIndex].position != position)) {
 			ddgiProbes[globalProbeIndex].position = position;
 			int originalValue;
 			InterlockedAdd(ddgiClearCommand[0].x, 1, originalValue);
-			ddgiClearIndices[originalValue] = DDGIClearIndex(probeIndex.x, cascadeIndex);
+			ddgiClearIndices[originalValue] = DDGIClearIndex(probeIndex.x, CASCADE_INDEX);
 		}
 	}
 	GroupMemoryBarrierWithGroupSync();
+	if (probeDeactivated) {
+		return;
+	}
 
 	RayDesc probeRayDesc;
 	probeRayDesc.Origin =
@@ -161,7 +166,7 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 		sampledDistance = 1.5;
 	}
 	int2 transmissionIndex =
-		int2((cascadeIndex % 2) * RAY_COUNT, (cascadeIndex / 2) * PROBES_PER_CASCADE) +
+		int2((CASCADE_INDEX % 2) * RAY_COUNT, (CASCADE_INDEX / 2) * PROBES_PER_CASCADE) +
 		int2(rayIndex.x, probeIndex.x);
 	ddgiRadianceTransmissionTexture.Store(transmissionIndex, sampledRadiance);
 	ddgiDistanceTransmissionTexture.Store(transmissionIndex, sampledDistance);
@@ -175,7 +180,7 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 	if (counter.increment() == RAY_COUNT - 1) {
 		float minDistance = ((probeMinimumDistance.load() >> 16) / float(pow(2, 16) - 1)) * 1.5;
 		float maxDistance = ((probeMaximumDistance.load() >> 16) / float(pow(2, 16) - 1)) * 1.5;
-		if (maxDistance < ddgiCascades[cascadeIndex].gridSpacing / 2.f) {
+		if (maxDistance < ddgiCascades[CASCADE_INDEX].gridSpacing / 2.f) {
 			ddgiProbes[globalProbeIndex].active = false;
 			return;
 		} else {
@@ -186,8 +191,7 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 				-R6G5B5ToFloat3(probeMinimumDistance.load()) * (MINIMUM_RAY_DISTANCE - minDistance);
 			int originalValue;
 			InterlockedAdd(ddgiClearCommand[0].x, 1, originalValue);
-			ddgiClearIndices[originalValue] = DDGIClearIndex(probeIndex.x, cascadeIndex); 
+			ddgiClearIndices[originalValue] = DDGIClearIndex(probeIndex.x, CASCADE_INDEX);
 		}
 	}
 }
-

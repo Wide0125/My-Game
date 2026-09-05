@@ -1,0 +1,77 @@
+Date : 2026-09-03 11:45:28
+Directory : c:\Users\brian\Desktop\Code\My Game
+Total : 37 files,  11249 codes, 6777 comments, 1246 blanks, all 19272 lines
+
+Languages
++----------+------------+------------+------------+------------+------------+
+| language | files      | code       | comment    | blank      | total      |
++----------+------------+------------+------------+------------+------------+
+| C++      |         14 |      4,831 |      6,492 |        778 |     12,101 |
+| JSON     |          1 |      3,561 |          0 |          0 |      3,561 |
+| C        |          1 |      1,428 |        214 |        258 |      1,900 |
+| Slang    |         10 |      1,056 |          1 |        135 |      1,192 |
+| CMake    |          9 |        365 |         70 |         69 |        504 |
+| Python   |          1 |          6 |          0 |          5 |         11 |
+| todo     |          1 |          2 |          0 |          1 |          3 |
++----------+------------+------------+------------+------------+------------+
+
+Directories
++--------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| path                                                                                 | files      | code       | comment    | blank      | total      |
++--------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| .                                                                                    |         37 |     11,249 |      6,777 |      1,246 |     19,272 |
+| . (Files)                                                                            |          3 |        107 |          6 |         27 |        140 |
+| CMake                                                                                |          4 |        129 |         32 |         19 |        180 |
+| glfw3.4                                                                              |          6 |        888 |      6,181 |        341 |      7,410 |
+| glfw3.4\include                                                                      |          2 |        751 |      6,149 |        312 |      7,212 |
+| glfw3.4\include\GLFW                                                                 |          2 |        751 |      6,149 |        312 |      7,212 |
+| glfw3.4\lib                                                                          |          4 |        137 |         32 |         29 |        198 |
+| glfw3.4\lib\cmake                                                                    |          4 |        137 |         32 |         29 |        198 |
+| glfw3.4\lib\cmake\glfw3                                                              |          4 |        137 |         32 |         29 |        198 |
+| scenes                                                                               |          1 |      3,561 |          0 |          0 |      3,561 |
+| src                                                                                  |         23 |      6,564 |        558 |        859 |      7,981 |
++--------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+
+Files
++--------------------------------------------------------------------------------------+----------+------------+------------+------------+------------+
+| filename                                                                             | language | code       | comment    | blank      | total      |
++--------------------------------------------------------------------------------------+----------+------------+------------+------------+------------+
+| c:\Users\brian\Desktop\Code\My Game\CMakeLists.txt                                   | CMake    |         99 |          6 |         21 |        126 |
+| c:\Users\brian\Desktop\Code\My Game\CMake\FindVulkanMemoryAllocator.cmake            | CMake    |          8 |          0 |          1 |          9 |
+| c:\Users\brian\Desktop\Code\My Game\CMake\Findfastgltf.cmake                         | CMake    |          7 |          0 |          1 |          8 |
+| c:\Users\brian\Desktop\Code\My Game\CMake\Findglm.cmake                              | CMake    |          7 |          0 |          1 |          8 |
+| c:\Users\brian\Desktop\Code\My Game\CMake\Findnlohmann_json.cmake                    | CMake    |        107 |         32 |         16 |        155 |
+| c:\Users\brian\Desktop\Code\My Game\TODO.todo                                        | todo     |          2 |          0 |          1 |          3 |
+| c:\Users\brian\Desktop\Code\My Game\fix_compile_commands.py                          | Python   |          6 |          0 |          5 |         11 |
+| c:\Users\brian\Desktop\Code\My Game\glfw3.4\include\GLFW\glfw3.h                     | C++      |        654 |      5,627 |        267 |      6,548 |
+| c:\Users\brian\Desktop\Code\My Game\glfw3.4\include\GLFW\glfw3native.h               | C++      |         97 |        522 |         45 |        664 |
+| c:\Users\brian\Desktop\Code\My Game\glfw3.4\lib\cmake\glfw3\glfw3Config.cmake        | CMake    |          3 |          0 |          1 |          4 |
+| c:\Users\brian\Desktop\Code\My Game\glfw3.4\lib\cmake\glfw3\glfw3ConfigVersion.cmake | CMake    |         44 |         12 |         10 |         66 |
+| c:\Users\brian\Desktop\Code\My Game\glfw3.4\lib\cmake\glfw3\glfw3Targets-debug.cmake | CMake    |          9 |          6 |          5 |         20 |
+| c:\Users\brian\Desktop\Code\My Game\glfw3.4\lib\cmake\glfw3\glfw3Targets.cmake       | CMake    |         81 |         14 |         13 |        108 |
+| c:\Users\brian\Desktop\Code\My Game\scenes\Sponza.gltf                               | JSON     |      3,561 |          0 |          0 |      3,561 |
+| c:\Users\brian\Desktop\Code\My Game\src\Camera.hpp                                   | C++      |         67 |          0 |         10 |         77 |
+| c:\Users\brian\Desktop\Code\My Game\src\ComputeBindings.slang                        | Slang    |        119 |          0 |         16 |        135 |
+| c:\Users\brian\Desktop\Code\My Game\src\ComputeProbeDepthClear.slang                 | Slang    |         20 |          0 |          3 |         23 |
+| c:\Users\brian\Desktop\Code\My Game\src\ComputeProbeDepthUpdate.slang                | Slang    |        123 |          0 |          5 |        128 |
+| c:\Users\brian\Desktop\Code\My Game\src\ComputeProbeIrradianceClear.slang            | Slang    |         19 |          0 |          3 |         22 |
+| c:\Users\brian\Desktop\Code\My Game\src\ComputeProbeIrradianceUpdate.slang           | Slang    |        113 |          0 |          5 |        118 |
+| c:\Users\brian\Desktop\Code\My Game\src\ComputeRaySample.slang                       | Slang    |        176 |          0 |         18 |        194 |
+| c:\Users\brian\Desktop\Code\My Game\src\Constants.slang                              | Slang    |         10 |          0 |          2 |         12 |
+| c:\Users\brian\Desktop\Code\My Game\src\Graphics.slang                               | Slang    |         85 |          0 |          7 |         92 |
+| c:\Users\brian\Desktop\Code\My Game\src\GraphicsBindings.slang                       | Slang    |         85 |          0 |         16 |        101 |
+| c:\Users\brian\Desktop\Code\My Game\src\Light.hpp                                    | C++      |          9 |          0 |          5 |         14 |
+| c:\Users\brian\Desktop\Code\My Game\src\Lighting.slang                               | Slang    |        306 |          1 |         60 |        367 |
+| c:\Users\brian\Desktop\Code\My Game\src\Node.hpp                                     | C++      |         25 |          0 |          8 |         33 |
+| c:\Users\brian\Desktop\Code\My Game\src\PRNG.h                                       | C++      |        260 |        201 |         52 |        513 |
+| c:\Users\brian\Desktop\Code\My Game\src\Scene.hpp                                    | C++      |        302 |          0 |         34 |        336 |
+| c:\Users\brian\Desktop\Code\My Game\src\VulkanInterface.hpp                          | C++      |        411 |          6 |        100 |        517 |
+| c:\Users\brian\Desktop\Code\My Game\src\VulkanInterfaceDraw.cpp                      | C++      |        271 |          2 |         24 |        297 |
+| c:\Users\brian\Desktop\Code\My Game\src\VulkanInterfaceHelpers.cpp                   | C++      |        968 |         10 |         66 |      1,044 |
+| c:\Users\brian\Desktop\Code\My Game\src\VulkanInterfaceInit.cpp                      | C++      |        280 |         11 |         32 |        323 |
+| c:\Users\brian\Desktop\Code\My Game\src\VulkanInterfaceLoadScene.cpp                 | C++      |      1,400 |         14 |        106 |      1,520 |
+| c:\Users\brian\Desktop\Code\My Game\src\main.cpp                                     | C++      |         59 |          0 |         10 |         69 |
+| c:\Users\brian\Desktop\Code\My Game\src\mikktspace.c                                 | C        |      1,428 |        214 |        258 |      1,900 |
+| c:\Users\brian\Desktop\Code\My Game\src\mikktspace.h                                 | C++      |         28 |         99 |         19 |        146 |
+| Total                                                                                |          |     11,249 |      6,777 |      1,246 |     19,272 |
++--------------------------------------------------------------------------------------+----------+------------+------------+------------+------------+

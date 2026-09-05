@@ -1,7 +1,7 @@
 public module ComputeBindings;
 
 [vk::push_constant]
-int cascadeIndex;
+uint CASCADE_INDEX;
 
 struct Bounds {
 	int3 upperBounds;
@@ -101,6 +101,7 @@ int3 globalToStableCoordinates(int3 position, int gridSpacing) {
 	if (newVector.z < 0) {
 		newVector.z += DDGI_BASE_DIMENSIONS.z + 1;
 	}
+	return newVector;
 }
 
 uint float3ToR6G5B5(float3 input) {

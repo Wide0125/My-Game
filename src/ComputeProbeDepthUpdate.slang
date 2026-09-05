@@ -1,22 +1,26 @@
-import bindings;
+import ComputeBindings;
+import Constants;
 
 [shader("compute")]
 [numthreads(14, 14, 1)]
 void computeMain(uint3 probeIndex: SV_GroupID, uint3 localTexelUV: SV_GroupThreadID) {
 	static groupshared uint counter;
-	static groupshared int probeIndex;
+	static groupshared int globalProbeIndexTemp;
 	static groupshared int2 texelID;
 	if (localTexelUV.x == 0 && localTexelUV.y == 0) {
 		counter = 0;
+		globalProbeIndexTemp = PROBES_PER_CASCADE * CASCADE_INDEX;
 		texelID =
 			int2(
-				((probeIndex.x / PROBES_PER_CASCADE) % 2) * DDGI_TEXTURE_SIZE * 16,
-				((probeIndex.x / PROBES_PER_CASCADE) / 2) * DDGI_TEXTURE_SIZE * 16
+				(CASCADE_INDEX % 2) * DDGI_TEXTURE_SIZE * 16,
+				(CASCADE_INDEX / 2) * DDGI_TEXTURE_SIZE * 16
 			) +
 			int2((probeIndex.x % DDGI_TEXTURE_SIZE) * 16, (probeIndex.x / DDGI_TEXTURE_SIZE) * 16);
-		;
 	}
 	GroupMemoryBarrierWithGroupSync();
+	if (!ddgiProbes[globalProbeIndexTemp].active) {
+		return;
+	}
 
 	float texelX = localTexelUV.x - 6.5;
 	float texelY = localTexelUV.y - 6.5;
@@ -45,8 +49,9 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 localTexelUV: SV_GroupThrea
 		float dot = dot(texelVector, ddgiProbeSamples[currIndex]);
 		if (dot >= 0.8) {
 			++status;
-			float currDistance =
-				ddgiDistanceTransmissionTexture.Load(offsetUV + int2(currIndex, probeIndex.x % PROBES_PER_CASCADE));
+			float currDistance = ddgiDistanceTransmissionTexture.Load(
+				offsetUV + int2(currIndex, probeIndex.x % PROBES_PER_CASCADE)
+			);
 			distance += currDistance * dot;
 			distance2 += currDistance * currDistance * dot;
 			accumulatedDots += dot;

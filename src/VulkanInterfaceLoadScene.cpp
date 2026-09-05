@@ -421,15 +421,16 @@ void VulkanInterface::createDdgiResources() {
 		}
 		createHostBufferWithData(
 			sizeof(DDGICascadeGPU) * DDGI_LEVELS,
-			vk::BufferUsageFlagBits::eUniformBuffer,
+			vk::BufferUsageFlagBits::eStorageBuffer,
 			cascadesGpu.data(),
 			m_ddgiCascadeBuffers[frameIndex],
 			m_ddgiCascadeAllocations[frameIndex]
 		);
 		createBuffer(
 			sizeof(vk::DispatchIndirectCommand),
-			vk::BufferUsageFlagBits::eUniformBuffer,
-			{},
+			vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eIndirectBuffer,
+			VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+				VMA_ALLOCATION_CREATE_MAPPED_BIT,
 			m_ddgiClearDispatchCommandBuffers[frameIndex],
 			m_ddgiClearDispatchCommandAllocations[frameIndex]
 		);
@@ -1247,7 +1248,7 @@ void VulkanInterface::createComputeDescriptorSets() {
 			  .dstBinding = 14,
 			  .dstArrayElement = 0,
 			  .descriptorCount = 1,
-			  .descriptorType = vk::DescriptorType::eUniformBuffer,
+			  .descriptorType = vk::DescriptorType::eStorageBuffer,
 			  .pBufferInfo = &ddgiCascadeBufferInfo},
 			 {.dstSet = m_descriptorSets[frameIndex],
 			  .dstBinding = 15,
@@ -1286,7 +1287,7 @@ void VulkanInterface::createComputeDescriptorSets() {
 			 {.dstSet = m_descriptorSets[frameIndex],
 			  .dstBinding = 21,
 			  .descriptorCount = 1,
-			  .descriptorType = vk::DescriptorType::eUniformBuffer,
+			  .descriptorType = vk::DescriptorType::eStorageBuffer,
 			  .pBufferInfo = &ddgiClearCommandBufferInfo}}
 		};
 		m_device.updateDescriptorSets(descriptorWrites, {});
@@ -1369,17 +1370,8 @@ void VulkanInterface::createGraphicsPipeline() {
 		.pDynamicStates = dynamicStates.data()
 	};
 
-	vk::PushConstantRange pushConstantRange {
-		.stageFlags = vk::ShaderStageFlagBits::eFragment,
-		.offset = 0,
-		.size = sizeof(SubMeshMetadataBufferObject)
-	};
-
 	vk::PipelineLayoutCreateInfo pipelineLayoutInfo {
-		.setLayoutCount = 1,
-		.pSetLayouts = &*m_descriptorSetLayout,
-		.pushConstantRangeCount = 1,
-		.pPushConstantRanges = &pushConstantRange
+		.setLayoutCount = 1, .pSetLayouts = &*m_descriptorSetLayout, .pushConstantRangeCount = 0
 	};
 
 	m_graphicsPipelineLayout = {m_device, pipelineLayoutInfo};
@@ -1417,8 +1409,14 @@ void VulkanInterface::createComputePipelines() {
 		.module = computeRaySampleShaderModule,
 		.pName = "computeMain"
 	};
+	vk::PushConstantRange computePushConstants {
+		.stageFlags = vk::ShaderStageFlagBits::eCompute, .offset = 0, .size = sizeof(uint32_t)
+	};
 	vk::PipelineLayoutCreateInfo computeRaySamplePipelineLayoutInfo {
-		.setLayoutCount = 1, .pSetLayouts = &*m_descriptorSetLayout
+		.setLayoutCount = 1,
+		.pSetLayouts = &*m_descriptorSetLayout,
+		.pushConstantRangeCount = 1,
+		.pPushConstantRanges = &computePushConstants
 	};
 	m_computeRaySamplePipelineLayout = {m_device, computeRaySamplePipelineLayoutInfo};
 	vk::ComputePipelineCreateInfo computeRaySamplePipelineInfo {
@@ -1436,7 +1434,10 @@ void VulkanInterface::createComputePipelines() {
 		.pName = "computeMain"
 	};
 	vk::PipelineLayoutCreateInfo computeProbeIrradianceUpdatePipelineLayoutInfo {
-		.setLayoutCount = 1, .pSetLayouts = &*m_descriptorSetLayout
+		.setLayoutCount = 1,
+		.pSetLayouts = &*m_descriptorSetLayout,
+		.pushConstantRangeCount = 1,
+		.pPushConstantRanges = &computePushConstants
 	};
 	m_computeProbeIrradianceUpdatePipelineLayout = {
 		m_device, computeProbeIrradianceUpdatePipelineLayoutInfo
@@ -1457,7 +1458,10 @@ void VulkanInterface::createComputePipelines() {
 		.pName = "computeMain"
 	};
 	vk::PipelineLayoutCreateInfo computeProbeDepthUpdatePipelineLayoutInfo {
-		.setLayoutCount = 1, .pSetLayouts = &*m_descriptorSetLayout
+		.setLayoutCount = 1,
+		.pSetLayouts = &*m_descriptorSetLayout,
+		.pushConstantRangeCount = 1,
+		.pPushConstantRanges = &computePushConstants
 	};
 	m_computeProbeDepthUpdatePipelineLayout = {m_device, computeProbeDepthUpdatePipelineLayoutInfo};
 	vk::ComputePipelineCreateInfo computeProbeDepthUpdatePipelineInfo {
@@ -1476,7 +1480,10 @@ void VulkanInterface::createComputePipelines() {
 		.pName = "computeMain"
 	};
 	vk::PipelineLayoutCreateInfo computeProbeIrradianceClearPipelineLayoutInfo {
-		.setLayoutCount = 1, .pSetLayouts = &*m_descriptorSetLayout
+		.setLayoutCount = 1,
+		.pSetLayouts = &*m_descriptorSetLayout,
+		.pushConstantRangeCount = 1,
+		.pPushConstantRanges = &computePushConstants
 	};
 	m_computeProbeIrradianceClearPipelineLayout = {
 		m_device, computeProbeIrradianceClearPipelineLayoutInfo
@@ -1497,7 +1504,10 @@ void VulkanInterface::createComputePipelines() {
 		.pName = "computeMain"
 	};
 	vk::PipelineLayoutCreateInfo computeProbeDepthClearPipelineLayoutInfo {
-		.setLayoutCount = 1, .pSetLayouts = &*m_descriptorSetLayout
+		.setLayoutCount = 1,
+		.pSetLayouts = &*m_descriptorSetLayout,
+		.pushConstantRangeCount = 1,
+		.pPushConstantRanges = &computePushConstants
 	};
 	m_computeProbeDepthClearPipelineLayout = {m_device, computeProbeDepthClearPipelineLayoutInfo};
 	vk::ComputePipelineCreateInfo computeProbeDepthClearPipelineInfo {

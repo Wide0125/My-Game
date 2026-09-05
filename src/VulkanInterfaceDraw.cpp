@@ -112,17 +112,44 @@ void VulkanInterface::drawFrame() {
 		commandBuffer.bindPipeline(
 			vk::PipelineBindPoint::eCompute, m_computeRaySamplePipeline
 		); // compute
-		commandBuffer.dispatch(m_ddgiProbes.size(), 1, 1);
+		uint32_t cascadeIndex {0};
+		commandBuffer.pushConstants(
+			m_computeRaySamplePipelineLayout,
+			vk::ShaderStageFlagBits::eCompute,
+			0,
+			sizeof(uint32_t),
+			&cascadeIndex
+		);
+		commandBuffer.dispatch(m_ddgiTotalProbeCount, 1, 1);
+		if (secondaryDdgiOperationIndex != -1) {
+			commandBuffer.pushConstants(
+				m_computeRaySamplePipelineLayout,
+				vk::ShaderStageFlagBits::eCompute,
+				0,
+				sizeof(uint32_t),
+				&secondaryDdgiOperationIndex
+			);
+			commandBuffer.dispatch(m_ddgiTotalProbeCount, 1, 1);
+		}
+		m_pipelineMemoryBarrier = {
+			.srcStageMask = vk::PipelineStageFlagBits2::eComputeShader,
+			.srcAccessMask = vk::AccessFlagBits2::eShaderWrite,
+			.dstStageMask = vk::PipelineStageFlagBits2::eComputeShader,
+			.dstAccessMask = vk::AccessFlagBits2::eShaderRead
+		};
+		m_pipelineDependencyInfo = {
+			.memoryBarrierCount = 1, .pMemoryBarriers = &m_pipelineMemoryBarrier
+		};
+		commandBuffer.pipelineBarrier2(m_pipelineDependencyInfo);
 
 		commandBuffer.bindPipeline(
 			vk::PipelineBindPoint::eCompute, m_computeProbeIrradianceClearPipeline
 		);
-		commandBuffer.dispatch(m_ddgiClearIndices.size(), 1, 1);
+		commandBuffer.dispatchIndirect(m_ddgiClearDispatchCommandBuffers[m_frameIndex], 0);
 		commandBuffer.bindPipeline(
 			vk::PipelineBindPoint::eCompute, m_computeProbeDepthClearPipeline
 		);
-		commandBuffer.dispatch(m_ddgiClearIndices.size(), 1, 1);
-
+		commandBuffer.dispatchIndirect(m_ddgiClearDispatchCommandBuffers[m_frameIndex], 0);
 		m_pipelineMemoryBarrier = {
 			.srcStageMask = vk::PipelineStageFlagBits2::eComputeShader |
 							vk::PipelineStageFlagBits2::eFragmentShader,
@@ -138,12 +165,46 @@ void VulkanInterface::drawFrame() {
 		commandBuffer.bindPipeline(
 			vk::PipelineBindPoint::eCompute, m_computeProbeIrradianceUpdatePipeline
 		);
-		commandBuffer.dispatch(m_ddgiProbes.size(), 1, 1);
+		commandBuffer.pushConstants(
+			m_computeRaySamplePipelineLayout,
+			vk::ShaderStageFlagBits::eCompute,
+			0,
+			sizeof(uint32_t),
+			&cascadeIndex
+		);
+		commandBuffer.dispatch(m_ddgiTotalProbeCount, 1, 1);
+		if (secondaryDdgiOperationIndex != -1) {
+			commandBuffer.pushConstants(
+				m_computeRaySamplePipelineLayout,
+				vk::ShaderStageFlagBits::eCompute,
+				0,
+				sizeof(uint32_t),
+				&secondaryDdgiOperationIndex
+			);
+			commandBuffer.dispatch(m_ddgiTotalProbeCount, 1, 1);
+		}
 
 		commandBuffer.bindPipeline(
 			vk::PipelineBindPoint::eCompute, m_computeProbeDepthUpdatePipeline
 		);
-		commandBuffer.dispatch(m_ddgiProbes.size(), 1, 1);
+		commandBuffer.pushConstants(
+			m_computeRaySamplePipelineLayout,
+			vk::ShaderStageFlagBits::eCompute,
+			0,
+			sizeof(uint32_t),
+			&cascadeIndex
+		);
+		commandBuffer.dispatch(m_ddgiTotalProbeCount, 1, 1);
+		if (secondaryDdgiOperationIndex != -1) {
+			commandBuffer.pushConstants(
+				m_computeRaySamplePipelineLayout,
+				vk::ShaderStageFlagBits::eCompute,
+				0,
+				sizeof(uint32_t),
+				&secondaryDdgiOperationIndex
+			);
+			commandBuffer.dispatch(m_ddgiTotalProbeCount, 1, 1);
+		}
 
 		m_pipelineMemoryBarrier = {
 			.srcStageMask = vk::PipelineStageFlagBits2::eComputeShader,
@@ -188,7 +249,7 @@ void VulkanInterface::drawFrame() {
 		m_drawCommandsBuffers[m_frameIndex],
 		0,
 		m_opaqueDrawCallsCount + m_transparentDrawCallsCount + (m_drawDdgiProbes ? 1 : 0),
-		sizeof(DrawIndirectCommand)
+		sizeof(vk::DrawIndexedIndirectCommand)
 	);
 
 	commandBuffer.endRendering();

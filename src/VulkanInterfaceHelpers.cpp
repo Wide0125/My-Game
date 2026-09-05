@@ -303,14 +303,13 @@ void VulkanInterface::cleanup() {
 			m_allocator, m_ddgiCascadeBuffers[frameIndex], m_ddgiCascadeAllocations[frameIndex]
 		);
 		vmaDestroyBuffer(
-			m_allocator, m_ddgiProbeBuffers[frameIndex], m_ddgiProbeAllocations[frameIndex]
-		);
-		vmaDestroyBuffer(
 			m_allocator,
-			m_ddgiClearIndexBuffers[frameIndex],
-			m_ddgiClearIndexAllocations[frameIndex]
+			m_ddgiClearDispatchCommandBuffers[frameIndex],
+			m_ddgiClearDispatchCommandAllocations[frameIndex]
 		);
 	}
+	vmaDestroyBuffer(m_allocator, m_ddgiProbeBuffer, m_ddgiProbeAllocation);
+	vmaDestroyBuffer(m_allocator, m_ddgiClearIndicesBuffer, m_ddgiClearIndicesAllocation);
 	vmaDestroyBuffer(m_allocator, m_ddgiBaseDimensionsBuffer, m_ddgiBaseDimensionsAllocation);
 	vmaDestroyImage(m_allocator, m_ddgiIrradianceImage, m_ddgiIrradianceAllocation);
 	vmaDestroyImage(m_allocator, m_ddgiDepthImage, m_ddgiDepthAllocation);
@@ -373,16 +372,16 @@ vk::DescriptorPoolCreateInfo VulkanInterface::createDescriptorPool(uint32_t text
 		 {.type = vk::DescriptorType::eStorageImage, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eStorageImage, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eStorageImage, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eStorageImage, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eCombinedImageSampler,
+		  .descriptorCount = MAX_FRAMES_IN_FLIGHT},
+		 {.type = vk::DescriptorType::eCombinedImageSampler,
+		  .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
-		 {.type = vk::DescriptorType::eStorageImage, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
-		 {.type = vk::DescriptorType::eStorageImage, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
-		 {.type = vk::DescriptorType::eCombinedImageSampler,
-		  .descriptorCount = MAX_FRAMES_IN_FLIGHT},
-		 {.type = vk::DescriptorType::eCombinedImageSampler,
-		  .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
-		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
-		 {.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT}}
+		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT}}
 	};
 	vk::DescriptorPoolCreateInfo poolInfo {
 		.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
@@ -445,7 +444,7 @@ VulkanInterface::createDescriptorSetLayout(uint32_t textureCount) const {
 		 {.binding = 10,
 		  .descriptorType = vk::DescriptorType::eStorageBuffer,
 		  .descriptorCount = 1,
-		  .stageFlags = vk::ShaderStageFlagBits::eCompute | vk::ShaderStageFlagBits::eFragment,
+		  .stageFlags = vk::ShaderStageFlagBits::eCompute | vk::ShaderStageFlagBits::eAllGraphics,
 		  .pImmutableSamplers = nullptr},
 		 {.binding = 11,
 		  .descriptorType = vk::DescriptorType::eCombinedImageSampler,
@@ -463,7 +462,7 @@ VulkanInterface::createDescriptorSetLayout(uint32_t textureCount) const {
 		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
 		  .pImmutableSamplers = nullptr},
 		 {.binding = 14,
-		  .descriptorType = vk::DescriptorType::eUniformBuffer,
+		  .descriptorType = vk::DescriptorType::eStorageBuffer,
 		  .descriptorCount = 1,
 		  .stageFlags = vk::ShaderStageFlagBits::eCompute | vk::ShaderStageFlagBits::eFragment,
 		  .pImmutableSamplers = nullptr},
@@ -490,7 +489,7 @@ VulkanInterface::createDescriptorSetLayout(uint32_t textureCount) const {
 		 {.binding = 19,
 		  .descriptorType = vk::DescriptorType::eUniformBuffer,
 		  .descriptorCount = 1,
-		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
+		  .stageFlags = vk::ShaderStageFlagBits::eCompute | vk::ShaderStageFlagBits::eFragment,
 		  .pImmutableSamplers = nullptr},
 		 {.binding = 20,
 		  .descriptorType = vk::DescriptorType::eStorageBuffer,
@@ -498,7 +497,7 @@ VulkanInterface::createDescriptorSetLayout(uint32_t textureCount) const {
 		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
 		  .pImmutableSamplers = nullptr},
 		 {.binding = 21,
-		  .descriptorType = vk::DescriptorType::eUniformBuffer,
+		  .descriptorType = vk::DescriptorType::eStorageBuffer,
 		  .descriptorCount = 1,
 		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
 		  .pImmutableSamplers = nullptr}}
@@ -791,7 +790,7 @@ void VulkanInterface::updateBuffers(bool cameraMoved) {
 		sizeof(ModelTransformBufferObject) * modelTransforms.size()
 	);
 	if (cameraMoved) {
-		std::vector<DrawIndirectCommand> drawCommands {};
+		std::vector<vk::DrawIndexedIndirectCommand> drawCommands {};
 		std::vector<SubMeshMetadataBufferObject> metaData {};
 		drawCommands.reserve(m_currentScene->getModelInstancesPerMesh().size() * m_subMeshCount);
 		metaData.reserve(m_currentScene->getModelInstancesPerMesh().size() * m_subMeshCount);
@@ -815,7 +814,7 @@ void VulkanInterface::updateBuffers(bool cameraMoved) {
 			m_allocator,
 			drawCommands.data(),
 			m_drawCommandsAllocations[m_frameIndex],
-			sizeof(DrawIndirectCommand) * m_opaqueDrawCallsCount,
+			sizeof(vk::DrawIndexedIndirectCommand) * m_opaqueDrawCallsCount,
 			sizeof(drawCommands[0]) * drawCommands.size()
 		);
 		vmaCopyMemoryToAllocation(
@@ -827,20 +826,9 @@ void VulkanInterface::updateBuffers(bool cameraMoved) {
 		);
 
 		if (m_drawDdgiProbes) {
-			std::vector<ModelTransformBufferObject> ddgiProbeTransformations {};
-			ddgiProbeTransformations.reserve(m_ddgiProbes.size());
-			uint32_t probeIndex {0};
-			for (const auto& probe: m_ddgiProbes) {
-				ddgiProbeTransformations.emplace_back(
-					glm::translate(probe.position) * glm::scale(glm::vec3 {0.1, 0.1, 0.1}),
-					glm::mat4 {},
-					probeIndex
-				);
-				++probeIndex;
-			}
-			DrawIndirectCommand probeDrawCommand {
+			vk::DrawIndexedIndirectCommand probeDrawCommand {
 				m_meshes[DDGI_MODEL_INDEX].subMeshes[0].indexCount,
-				static_cast<uint32_t>(m_ddgiProbes.size()),
+				static_cast<uint32_t>(m_ddgiTotalProbeCount),
 				m_meshes[DDGI_MODEL_INDEX].subMeshes[0].indexStart,
 				static_cast<int32_t>(m_meshes[DDGI_MODEL_INDEX].subMeshes[0].vertexOffset),
 				static_cast<uint32_t>(m_currentScene->getModelInstanceTransforms().size())
@@ -851,19 +839,11 @@ void VulkanInterface::updateBuffers(bool cameraMoved) {
 			};
 			vmaCopyMemoryToAllocation(
 				m_allocator,
-				ddgiProbeTransformations.data(),
-				m_modelTransformAllocations[m_frameIndex],
-				sizeof(ModelTransformBufferObject) *
-					m_currentScene->getModelInstanceTransforms().size(),
-				sizeof(ModelTransformBufferObject) * m_ddgiProbes.size()
-			);
-			vmaCopyMemoryToAllocation(
-				m_allocator,
 				&probeDrawCommand,
 				m_drawCommandsAllocations[m_frameIndex],
-				sizeof(DrawIndirectCommand) *
+				sizeof(vk::DrawIndexedIndirectCommand) *
 					(m_opaqueDrawCallsCount + m_transparentDrawCallsCount),
-				sizeof(DrawIndirectCommand)
+				sizeof(vk::DrawIndexedIndirectCommand)
 			);
 			vmaCopyMemoryToAllocation(
 				m_allocator,
@@ -877,19 +857,47 @@ void VulkanInterface::updateBuffers(bool cameraMoved) {
 	}
 }
 void VulkanInterface::updateDdgi(int cascadeIndex1, int cascadeIndex2) {
-	DDGICascadeGPU cascade {m_ddgiCascades[cascadeIndex1]};
+	DDGICascade& cascade1 {m_ddgiCascades[cascadeIndex1]};
+	cascade1.innerBounds.upperBounds =
+		static_cast<glm::ivec3>(glm::floor(m_currentScene->getCameraPosition())) +
+		cascade1.innerDimensions / 2;
+	cascade1.innerBounds.lowerBounds =
+		static_cast<glm::ivec3>(glm::floor(m_currentScene->getCameraPosition())) -
+		cascade1.innerDimensions / 2;
+	cascade1.outerBounds.upperBounds =
+		static_cast<glm::ivec3>(glm::floor(m_currentScene->getCameraPosition())) +
+		cascade1.outerDimensions / 2;
+	cascade1.outerBounds.lowerBounds =
+		static_cast<glm::ivec3>(glm::floor(m_currentScene->getCameraPosition())) -
+		cascade1.outerDimensions / 2;
+
+	DDGICascadeGPU cascade1GPU {cascade1};
 	vmaCopyMemoryToAllocation(
 		m_allocator,
-		&cascade,
+		&cascade1GPU,
 		m_ddgiCascadeAllocations[m_frameIndex],
 		sizeof(DDGICascadeGPU) * cascadeIndex1,
 		sizeof(DDGICascadeGPU)
 	);
 	if (cascadeIndex2 != -1) {
-		cascade = m_ddgiCascades[cascadeIndex2];
+		DDGICascade& cascade2 {m_ddgiCascades[cascadeIndex1]};
+		cascade2.innerBounds.upperBounds =
+			static_cast<glm::ivec3>(glm::floor(m_currentScene->getCameraPosition())) +
+			cascade2.innerDimensions / 2;
+		cascade2.innerBounds.lowerBounds =
+			static_cast<glm::ivec3>(glm::floor(m_currentScene->getCameraPosition())) -
+			cascade2.innerDimensions / 2;
+		cascade2.outerBounds.upperBounds =
+			static_cast<glm::ivec3>(glm::floor(m_currentScene->getCameraPosition())) +
+			cascade2.outerDimensions / 2;
+		cascade2.outerBounds.lowerBounds =
+			static_cast<glm::ivec3>(glm::floor(m_currentScene->getCameraPosition())) -
+			cascade2.outerDimensions / 2;
+
+		DDGICascadeGPU cascade2GPU {cascade2};
 		vmaCopyMemoryToAllocation(
 			m_allocator,
-			&cascade,
+			&cascade2GPU,
 			m_ddgiCascadeAllocations[m_frameIndex],
 			sizeof(DDGICascadeGPU) * cascadeIndex2,
 			sizeof(DDGICascadeGPU)

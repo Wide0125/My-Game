@@ -38,7 +38,7 @@ vertMain(VSInput input, uint instanceID: SV_VulkanInstanceID, uint drawIndex: SV
 float4 fragMain(VSOutput input) : SV_TARGET {
 	if (input.meshType == MeshType::PROBE) {
 		float3 vector = input.worldPosition - input.probeOrigin;
-		return float4(irradianceTexelFetch(vector, input.probeIndex), 1);
+		return float4(irradianceTexelFetch(vector, input.probeIndex / PROBES_PER_CASCADE, input.probeIndex % PROBES_PER_CASCADE), 1);
 	}
 
 	MaterialBuffer currMaterial = materials[input.materialIndex];
