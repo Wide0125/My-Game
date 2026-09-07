@@ -36,6 +36,9 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 		}
 	}
 	GroupMemoryBarrierWithGroupSync();
+	if (probeDeactivated) {
+		return;
+	}
 
 	RayDesc probeRayDesc;
 	probeRayDesc.Origin =
@@ -174,6 +177,7 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 	InterlockedMin(probeMinimumDistance, distanceOffset);
 	InterlockedMax(probeMaximumDistance, distanceOffset);
 
+	GroupMemoryBarrierWithGroupSync();
 	int originalCounterValue;
 	InterlockedAdd(counter, 1, originalCounterValue);
 	if (originalCounterValue == RAY_COUNT - 1) {

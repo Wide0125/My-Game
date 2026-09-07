@@ -880,18 +880,34 @@ void VulkanInterface::updateDdgi(int cascadeIndex1, int cascadeIndex2) {
 		sizeof(DDGICascadeGPU)
 	);
 	if (cascadeIndex2 != -1) {
-		DDGICascade& cascade2 {m_ddgiCascades[cascadeIndex1]};
+		DDGICascade& cascade2 {m_ddgiCascades[cascadeIndex2]};
+		glm::vec3 cameraPositionMod {glm::mod(
+			m_currentScene->getCameraPosition(),
+			glm::vec3 {cascade2.gridSpacing, cascade2.gridSpacing, cascade2.gridSpacing}
+		)};
+		if (cameraPositionMod.x < 0) {
+			cameraPositionMod.x += cascade2.gridSpacing;
+		}
+		if (cameraPositionMod.y < 0) {
+			cameraPositionMod.y += cascade2.gridSpacing;
+		}
+		if (cameraPositionMod.z < 0) {
+			cameraPositionMod.z += cascade2.gridSpacing;
+		}
+		glm::ivec3 roundedCameraPosition {
+			glm::floor(m_currentScene->getCameraPosition() - cameraPositionMod)
+		};
 		cascade2.innerBounds.upperBounds =
-			static_cast<glm::ivec3>(glm::floor(m_currentScene->getCameraPosition())) +
+			static_cast<glm::ivec3>(roundedCameraPosition) +
 			cascade2.innerDimensions / 2;
 		cascade2.innerBounds.lowerBounds =
-			static_cast<glm::ivec3>(glm::floor(m_currentScene->getCameraPosition())) -
+			static_cast<glm::ivec3>(roundedCameraPosition) -
 			cascade2.innerDimensions / 2;
 		cascade2.outerBounds.upperBounds =
-			static_cast<glm::ivec3>(glm::floor(m_currentScene->getCameraPosition())) +
+			static_cast<glm::ivec3>(roundedCameraPosition) +
 			cascade2.outerDimensions / 2;
 		cascade2.outerBounds.lowerBounds =
-			static_cast<glm::ivec3>(glm::floor(m_currentScene->getCameraPosition())) -
+			static_cast<glm::ivec3>(roundedCameraPosition) -
 			cascade2.outerDimensions / 2;
 
 		DDGICascadeGPU cascade2GPU {cascade2};

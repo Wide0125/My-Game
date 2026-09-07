@@ -10,7 +10,8 @@ vertMain(VSInput input, uint instanceID: SV_VulkanInstanceID, uint drawIndex: SV
 	float4 worldPosition;
 	if (metadata[drawIndex].type == MeshType::PROBE) {
 		output.probeIndex = modelTransform[instanceID].probeIndex;
-		output.probeOrigin = ddgiProbes[output.probeIndex].position;
+		output.probeOrigin =
+			ddgiProbes[output.probeIndex].position + ddgiProbes[output.probeIndex].offset;
 		float4x4 probeTransform = float4x4(
 			float4(0.1, 0, 0, output.probeOrigin.x),
 			float4(0, 0.1, 0, output.probeOrigin.y),
@@ -38,7 +39,12 @@ vertMain(VSInput input, uint instanceID: SV_VulkanInstanceID, uint drawIndex: SV
 float4 fragMain(VSOutput input) : SV_TARGET {
 	if (input.meshType == MeshType::PROBE) {
 		float3 vector = input.worldPosition - input.probeOrigin;
-		return float4(irradianceTexelFetch(vector, input.probeIndex / PROBES_PER_CASCADE, input.probeIndex % PROBES_PER_CASCADE), 1);
+		return float4(
+			irradianceTexelFetch(
+				vector, input.probeIndex / PROBES_PER_CASCADE, input.probeIndex % PROBES_PER_CASCADE
+			) + float3(0.01),
+			1
+		);
 	}
 
 	MaterialBuffer currMaterial = materials[input.materialIndex];

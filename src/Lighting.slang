@@ -205,17 +205,7 @@ float2 depthTexelFetch(float3 vector, int cascadeIndex, int probeIndex) {
 }
 
 uint probeCoordinatesToIndex(int3 position, int gridSpacing) {
-	int3 newVector =
-		(position / gridSpacing + DDGI_BASE_DIMENSIONS / 2) % (DDGI_BASE_DIMENSIONS + 1);
-	if (newVector.x < 0) {
-		newVector.x += DDGI_BASE_DIMENSIONS.x + 1;
-	}
-	if (newVector.y < 0) {
-		newVector.y += DDGI_BASE_DIMENSIONS.y + 1;
-	}
-	if (newVector.z < 0) {
-		newVector.z += DDGI_BASE_DIMENSIONS.z + 1;
-	}
+	int3 newVector = globalToStableCoordinates(position, gridSpacing);
 	return newVector.x * (DDGI_BASE_DIMENSIONS.y + 1) * (DDGI_BASE_DIMENSIONS.z + 1) +
 		   newVector.y * (DDGI_BASE_DIMENSIONS.z + 1) + newVector.z;
 }

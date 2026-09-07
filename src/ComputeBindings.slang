@@ -86,7 +86,7 @@ int3 indexToGlobalCoordinates(int index, Bounds cascadeBounds, int gridSpacing) 
 	if (difference.z < 0) {
 		difference.z += DDGI_BASE_DIMENSIONS.z + 1;
 	}
-	return cascadeBounds.upperBounds - difference;
+	return cascadeBounds.upperBounds - difference * gridSpacing;
 } // local index within cascade
 
 int3 globalToStableCoordinates(int3 position, int gridSpacing) {
@@ -113,7 +113,8 @@ uint float3ToR6G5B5(float3 input) {
 	uint z = uint(input.z * (pow(2, 5) - 1));
 
 	return x | y | z;
-} // packs a float3 into r6g5b5 format using fixed point (assumes float3 is normalized, clamps if otherwise)
+} // packs a float3 into r6g5b5 format using fixed point (assumes float3 is normalized, clamps if
+  // otherwise)
 
 float3 R6G5B5ToFloat3(uint input) {
 	uint xMask = 0b00000000000000001111110000000000;
