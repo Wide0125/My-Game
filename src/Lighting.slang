@@ -247,7 +247,7 @@ float3 getProbeIrradiance(float3 worldPosition, float3 N) {
 					currCascadeIndex -= 1;
 				}
 
-				float3 dir = ddgiProbes[probeIndex].position - worldPosition;
+				float3 dir = ddgiProbes[probeIndex].position + ddgiProbes[probeIndex].offset - worldPosition;
 				float r = length(dir);
 				dir *= 1.0 / r;
 

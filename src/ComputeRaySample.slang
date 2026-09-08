@@ -83,7 +83,7 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 
 	float3 sampledRadiance;
 	float sampledDistance;
-	float maxDistance = 1.5 * ddgiCascades[CASCADE_INDEX].gridSpacing;
+	float maxRayDistance = 1.5 * ddgiCascades[CASCADE_INDEX].gridSpacing;
 	if (probeQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
 		VSOutput intersectionPoint = intersectionVSOutput(
 			probeQuery.CommittedRayInstanceCustomIndex(),
@@ -144,7 +144,7 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 		);
 		sampledRadiance = intersectionPointRadiance.rgb;
 		sampledDistance =
-			min(maxDistance,
+			min(maxRayDistance,
 				distance(probeQuery.WorldRayOrigin(), intersectionPoint.worldPosition));
 
 		probeRayDesc.TMax = probeQuery.CommittedRayT();
@@ -173,7 +173,7 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 		sampledRadiance *= transmittanceFactor;
 	} else {
 		sampledRadiance = float3(0); // code for sampling sky box goes here
-		sampledDistance = maxDistance;
+		sampledDistance = maxRayDistance;
 	}
 	int2 transmissionIndex =
 		int2((CASCADE_INDEX % 2) * RAY_COUNT, (CASCADE_INDEX / 2) * PROBES_PER_CASCADE) +
@@ -181,9 +181,9 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 	ddgiRadianceTransmissionTexture.Store(transmissionIndex, sampledRadiance);
 	ddgiDistanceTransmissionTexture.Store(transmissionIndex, sampledDistance);
 
-	uint distanceOffset = uint((sampledDistance / maxDistance) * (pow(2, 16) - 1));
+	uint distanceOffset = uint((sampledDistance / maxRayDistance) * (pow(2, 16) - 1));
 	distanceOffset <<= 16;
-	distanceOffset | float3ToR6G5B5(sampledDistance);
+	distanceOffset |= float3ToR6G5B5(sampledDistance);
 	InterlockedMin(probeMinimumDistance, distanceOffset);
 	InterlockedMax(probeMaximumDistance, distanceOffset);
 
@@ -191,8 +191,8 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 	int originalCounterValue;
 	InterlockedAdd(counter, 1, originalCounterValue);
 	if (originalCounterValue == RAY_COUNT - 1) {
-		float minDistance = ((probeMinimumDistance >> 16) / float(pow(2, 16) - 1)) * maxDistance;
-		float maxDistance = ((probeMaximumDistance >> 16) / float(pow(2, 16) - 1)) * maxDistance;
+		float minDistance = ((probeMinimumDistance >> 16) / float(pow(2, 16) - 1)) * maxRayDistance;
+		float maxDistance = ((probeMaximumDistance >> 16) / float(pow(2, 16) - 1)) * maxRayDistance;
 		if (maxDistance < ddgiCascades[CASCADE_INDEX].gridSpacing / 2.f) {
 			ddgiProbes[globalProbeIndex].state = DDGIProbe::State::inactive;
 			return;
@@ -201,6 +201,7 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 			ddgiProbes[globalProbeIndex].offset =
 				-R6G5B5ToFloat3(probeMinimumDistance) * (MINIMUM_RAY_DISTANCE - minDistance);
 			clearProbe = true;
+			printf( "Probe offsetted! %f, %f, %f\n", ddgiProbes[globalProbeIndex].offset.x, ddgiProbes[globalProbeIndex].offset.y, ddgiProbes[globalProbeIndex].offset.z);
 		}
 		if (clearProbe) {
 			int originalValue;

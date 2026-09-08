@@ -1,2 +1,2 @@
-TODO: Restructure compute shaders to handle different cascades on separate dispatches
-TODO: Restructure DDGI to be GPU driven rather than CPU driven
+Done: Restructure compute shaders to handle different cascades on separate dispatches
+Done: Restructure DDGI to be GPU driven rather than CPU driven

@@ -118,30 +118,51 @@ int3 globalToStableCoordinates(int3 position, int gridSpacing) {
 
 uint float3ToR6G5B5(float3 input) {
 	input = min(float3(1), input);
-	uint x = uint(input.x * (pow(2, 6) - 1));
+	int x = int(input.x * (pow(2, 5) - 1));
 	x <<= 10;
-	uint y = uint(input.y * (pow(2, 5) - 1));
+	if (input.x < 0) {
+		x |= 0b00000000000000001000000000000000;
+	}
+	int y = int(input.y * (pow(2, 4) - 1));
 	y <<= 5;
-	uint z = uint(input.z * (pow(2, 5) - 1));
+	if (input.y < 0) {
+		y |= 0b00000000000000000000001000000000;
+	}
+	int z = int(input.z * (pow(2, 4) - 1));
+	if (input.z < 0) {
+		z |= 0b00000000000000000000000000010000;
+	}
 
 	return x | y | z;
 } // packs a float3 into r6g5b5 format using fixed point (assumes float3 is normalized, clamps if
   // otherwise)
 
 float3 R6G5B5ToFloat3(uint input) {
-	uint xMask = 0b00000000000000001111110000000000;
-	uint yMask = 0b00000000000000000000001111100000;
-	uint zMask = 0b00000000000000000000000000011111;
+	uint xMask = 0b00000000000000000111110000000000;
+	uint xSignMask = 0b00000000000000001000000000000000;
+	uint yMask = 0b00000000000000000000000111100000;
+	uint ySignMask = 0b00000000000000000000001000000000;
+	uint zMask = 0b00000000000000000000000000001111;
+	uint zSignMask = 0b00000000000000000000000000010000;
 
-	uint x = input & xMask;
+	int x = input & xMask;
 	x >>= 10;
-	uint y = input & yMask;
+	int y = input & yMask;
 	y >>= 5;
-	uint z = input & zMask;
+	int z = input & zMask;
 
 	float3 output;
-	output.x = x / (pow(2, 6) - 1);
-	output.y = y / (pow(2, 5) - 1);
-	output.z = z / (pow(2, 5) - 1);
+	output.x = x / float(pow(2, 6) - 1);
+	if ((input & xSignMask) == xSignMask) {
+		x *= -1;
+	}
+	output.y = y / float(pow(2, 5) - 1);
+	if ((input & ySignMask) == ySignMask) {
+		y *= -1;
+	}
+	output.z = z / float(pow(2, 5) - 1);
+	if ((input & zSignMask) == zSignMask) {
+		z *= -1;
+	}
 	return output;
 } // unpacks a r6g5b5 uint into a float3, discarding the leftmost 16 bits
