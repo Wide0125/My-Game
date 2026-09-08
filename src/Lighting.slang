@@ -214,7 +214,9 @@ float3 getProbeIrradiance(float3 worldPosition, float3 N) {
 	int3 lowerBounds = int3(floor(worldPosition));
 	int cascadeIndex = -1;
 	for (int cascadeIndexTemp = 0; cascadeIndexTemp < MAX_DDGI_CASCADES; ++cascadeIndexTemp) {
-		if (withinBounds(lowerBounds, ddgiCascades[cascadeIndexTemp].outerBounds)) {
+		BoundsState pointBoundsState =
+			ddgiBoundsCheck(lowerBounds, ddgiCascades[cascadeIndexTemp].outerBounds);
+		if (pointBoundsState == BoundsState::inside || pointBoundsState == BoundsState::on) {
 			cascadeIndex = cascadeIndexTemp;
 			break;
 		}
@@ -234,10 +236,15 @@ float3 getProbeIrradiance(float3 worldPosition, float3 N) {
 		for (int y = lowerBounds.y; y <= lowerBounds.y + gridSpacing; y += gridSpacing) {
 			float zWeight = (1 - distances.z);
 			for (int z = lowerBounds.z; z <= lowerBounds.z + gridSpacing; z += gridSpacing) {
-				int probeIndex = PROBES_PER_CASCADE * cascadeIndex +
-								 probeCoordinatesToIndex(int3(x, y, z), gridSpacing);
-				if (!ddgiProbes[probeIndex].active) {
+				int probeOffset = PROBES_PER_CASCADE * cascadeIndex;
+				int probeIndex = probeCoordinatesToIndex(int3(x, y, z), gridSpacing);
+				if (ddgiProbes[probeOffset + probeIndex].state == DDGIProbe::State::inactive) {
 					continue;
+				}
+				int currCascadeIndex = cascadeIndex;
+				if (ddgiProbes[probeOffset + probeIndex].state == DDGIProbe::State::border) {
+					probeIndex = probeCoordinatesToIndex(int3(x, y, z), gridSpacing / 2);
+					currCascadeIndex -= 1;
 				}
 
 				float3 dir = ddgiProbes[probeIndex].position - worldPosition;
@@ -249,7 +256,8 @@ float3 getProbeIrradiance(float3 worldPosition, float3 N) {
 
 				weight *= xWeight * yWeight * zWeight;
 
-				float2 filteredDistance = 2.f * depthTexelFetch(-dir, cascadeIndex, probeIndex).rg;
+				float2 filteredDistance =
+					2.f * depthTexelFetch(-dir, currCascadeIndex, probeIndex).rg;
 				float chebyshevWeight = 1.f;
 				if (r > filteredDistance.x) // occluded
 				{
@@ -269,7 +277,7 @@ float3 getProbeIrradiance(float3 worldPosition, float3 N) {
 					weight *= (weight * weight) * (1.f / (crushThreshold * crushThreshold));
 				}
 
-				float3 probeIrradiance = irradianceTexelFetch(N, cascadeIndex, probeIndex).rgb;
+				float3 probeIrradiance = irradianceTexelFetch(N, currCascadeIndex, probeIndex).rgb;
 
 				irradiance += (weight * probeIrradiance);
 				accumulatedWeights += weight;

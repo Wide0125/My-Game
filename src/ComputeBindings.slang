@@ -15,7 +15,8 @@ struct DDGICascade {
 
 struct DDGIProbe {
 	int3 position;
-	bool active;
+	enum State { active, inactive, border };
+	State state;
 	float3 offset;
 };
 
@@ -61,10 +62,21 @@ RWStructuredBuffer<DDGIClearIndex> ddgiClearIndices;
 [vk::binding(21, 0)]
 RWStructuredBuffer<DispatchIndirectCommand> ddgiClearCommand;
 
-bool withinBounds(int3 position, Bounds bounds) {
-	bool3 less = position <= bounds.upperBounds;
-	bool3 greater = position >= bounds.lowerBounds;
-	return all(less) && all(greater);
+enum BoundsState { inside, on, outside }
+BoundsState ddgiBoundsCheck(int3 position, Bounds bounds) {
+	bool3 less = position < bounds.upperBounds;
+	bool3 greater = position > bounds.lowerBounds;
+	if (all(less) && all(greater)) {
+		return BoundsState::inside;
+	} else {
+		greater = position > bounds.upperBounds;
+		less = position < bounds.lowerBounds;
+		if (any(less) || any(greater)) {
+			return BoundsState::outside;
+		} else {
+			return BoundsState::on;
+		}
+	}
 }
 
 int3 indexToGlobalCoordinates(int index, Bounds cascadeBounds, int gridSpacing) {

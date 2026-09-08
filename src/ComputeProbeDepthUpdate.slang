@@ -18,7 +18,7 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 localTexelUV: SV_GroupThrea
 			int2((probeIndex.x % DDGI_TEXTURE_SIZE) * 16, (probeIndex.x / DDGI_TEXTURE_SIZE) * 16);
 	}
 	GroupMemoryBarrierWithGroupSync();
-	if (!ddgiProbes[globalProbeIndexTemp].active) {
+	if (ddgiProbes[globalProbeIndexTemp].state == DDGIProbe::State::inactive) {
 		return;
 	}
 
@@ -50,7 +50,7 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 localTexelUV: SV_GroupThrea
 		if (dot >= 0.8) {
 			++status;
 			float currDistance = ddgiDistanceTransmissionTexture.Load(
-				offsetUV + int2(currIndex, probeIndex.x % PROBES_PER_CASCADE)
+				offsetUV + int2(currIndex, probeIndex.x)
 			);
 			distance += currDistance * dot;
 			distance2 += currDistance * currDistance * dot;

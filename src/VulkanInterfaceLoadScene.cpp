@@ -443,7 +443,8 @@ void VulkanInterface::createDdgiResources() {
 		m_ddgiClearIndicesAllocation
 	);
 	std::vector<DDGIProbe> ddgiProbes {
-		static_cast<size_t>(m_ddgiTotalProbeCount), DDGIProbe {{0, 0, 0}, false, {0, 0, 0}}
+		static_cast<size_t>(m_ddgiTotalProbeCount),
+		DDGIProbe {{0, 0, 0}, DDGIProbe::State::inactive, {0, 0, 0}}
 	};
 	createGPUBufferWithData(
 		sizeof(ddgiProbes[0]) * ddgiProbes.size(),

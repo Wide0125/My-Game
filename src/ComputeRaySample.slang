@@ -19,20 +19,28 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 		counter = 0;
 		probeDeactivated = false;
 		clearProbe = false;
-		if (withinBounds(
-				ddgiProbes[globalProbeIndex].position, ddgiCascades[CASCADE_INDEX].innerBounds
-			)) {
-			ddgiProbes[globalProbeIndex].active = false;
-			probeDeactivated = true;
-		}
-		int3 position = indexToGlobalCoordinates(
-			probeIndex.x,
-			ddgiCascades[CASCADE_INDEX].outerBounds,
-			ddgiCascades[CASCADE_INDEX].gridSpacing
+		BoundsState probeState = ddgiBoundsCheck(
+			ddgiProbes[globalProbeIndex].position, ddgiCascades[CASCADE_INDEX].innerBounds
 		);
-		if (any(ddgiProbes[globalProbeIndex].position != position)) {
-			ddgiProbes[globalProbeIndex].position = position;
-			clearProbe = true;
+		if (probeState == BoundsState::inside) {
+			ddgiProbes[globalProbeIndex].state = DDGIProbe::State::inactive;
+			probeDeactivated = true;
+		} else if (probeState == BoundsState::on && CASCADE_INDEX != 0) {
+			ddgiProbes[globalProbeIndex].state = DDGIProbe::State::border;
+			probeDeactivated = true;
+		} else {
+			ddgiProbes[globalProbeIndex].state = DDGIProbe::State::active;
+		}
+		if (!probeDeactivated) {
+			int3 position = indexToGlobalCoordinates(
+				probeIndex.x,
+				ddgiCascades[CASCADE_INDEX].outerBounds,
+				ddgiCascades[CASCADE_INDEX].gridSpacing
+			);
+			if (any(ddgiProbes[globalProbeIndex].position != position)) {
+				ddgiProbes[globalProbeIndex].position = position;
+				clearProbe = true;
+			}
 		}
 	}
 	GroupMemoryBarrierWithGroupSync();
@@ -75,6 +83,7 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 
 	float3 sampledRadiance;
 	float sampledDistance;
+	float maxDistance = 1.5 * ddgiCascades[CASCADE_INDEX].gridSpacing;
 	if (probeQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
 		VSOutput intersectionPoint = intersectionVSOutput(
 			probeQuery.CommittedRayInstanceCustomIndex(),
@@ -135,7 +144,8 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 		);
 		sampledRadiance = intersectionPointRadiance.rgb;
 		sampledDistance =
-			min(1.5, distance(probeQuery.WorldRayOrigin(), intersectionPoint.worldPosition));
+			min(maxDistance,
+				distance(probeQuery.WorldRayOrigin(), intersectionPoint.worldPosition));
 
 		probeRayDesc.TMax = probeQuery.CommittedRayT();
 		rayFlags = RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES | RAY_FLAG_CULL_OPAQUE;
@@ -163,7 +173,7 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 		sampledRadiance *= transmittanceFactor;
 	} else {
 		sampledRadiance = float3(0); // code for sampling sky box goes here
-		sampledDistance = 1.5;
+		sampledDistance = maxDistance;
 	}
 	int2 transmissionIndex =
 		int2((CASCADE_INDEX % 2) * RAY_COUNT, (CASCADE_INDEX / 2) * PROBES_PER_CASCADE) +
@@ -171,7 +181,7 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 	ddgiRadianceTransmissionTexture.Store(transmissionIndex, sampledRadiance);
 	ddgiDistanceTransmissionTexture.Store(transmissionIndex, sampledDistance);
 
-	uint distanceOffset = uint((sampledDistance / 1.5) * (pow(2, 16) - 1));
+	uint distanceOffset = uint((sampledDistance / maxDistance) * (pow(2, 16) - 1));
 	distanceOffset <<= 16;
 	distanceOffset | float3ToR6G5B5(sampledDistance);
 	InterlockedMin(probeMinimumDistance, distanceOffset);
@@ -181,13 +191,11 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 	int originalCounterValue;
 	InterlockedAdd(counter, 1, originalCounterValue);
 	if (originalCounterValue == RAY_COUNT - 1) {
-		float minDistance = ((probeMinimumDistance >> 16) / float(pow(2, 16) - 1)) * 1.5;
-		float maxDistance = ((probeMaximumDistance >> 16) / float(pow(2, 16) - 1)) * 1.5;
+		float minDistance = ((probeMinimumDistance >> 16) / float(pow(2, 16) - 1)) * maxDistance;
+		float maxDistance = ((probeMaximumDistance >> 16) / float(pow(2, 16) - 1)) * maxDistance;
 		if (maxDistance < ddgiCascades[CASCADE_INDEX].gridSpacing / 2.f) {
-			ddgiProbes[globalProbeIndex].active = false;
+			ddgiProbes[globalProbeIndex].state = DDGIProbe::State::inactive;
 			return;
-		} else {
-			ddgiProbes[globalProbeIndex].active = true;
 		}
 		if (minDistance < MINIMUM_RAY_DISTANCE) {
 			ddgiProbes[globalProbeIndex].offset =

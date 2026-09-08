@@ -133,7 +133,8 @@ struct DDGICascadeGPU {
 
 struct DDGIProbe {
 	glm::ivec3 position {};
-	bool active {};
+	enum State { active, inactive, border };
+	State state {inactive};
 	glm::vec3 offset {};
 };
 

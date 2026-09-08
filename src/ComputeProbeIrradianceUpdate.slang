@@ -18,7 +18,7 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 localTexelUV: SV_GroupThrea
 			int2((probeIndex.x % DDGI_TEXTURE_SIZE) * 8, (probeIndex.x / DDGI_TEXTURE_SIZE) * 8);
 	}
 	GroupMemoryBarrierWithGroupSync();
-	if (!ddgiProbes[globalProbeIndexTemp].active) {
+	if (ddgiProbes[globalProbeIndexTemp].state == DDGIProbe::State::inactive) {
 		return;
 	}
 
@@ -45,10 +45,9 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 localTexelUV: SV_GroupThrea
 		float dotProduct = dot(texelVector, ddgiProbeSamples[x]);
 		if (dotProduct >= 0) {
 			rayCount++;
-			irradiance += ddgiRadianceTransmissionTexture.Load(
-							  offsetTransmissionUV + int2(x, probeIndex.x % PROBES_PER_CASCADE)
-						  ) *
-						  dotProduct;
+			irradiance +=
+				ddgiRadianceTransmissionTexture.Load(offsetTransmissionUV + int2(x, probeIndex.x)) *
+				dotProduct;
 			weightSum += dotProduct;
 		}
 	}
