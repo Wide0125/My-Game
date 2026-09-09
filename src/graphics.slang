@@ -7,9 +7,13 @@ import Constants;
 VSOutput
 vertMain(VSInput input, uint instanceID: SV_VulkanInstanceID, uint drawIndex: SV_DrawIndex) {
 	VSOutput output;
+	output.draw = true;
 	float4 worldPosition;
 	if (metadata[drawIndex].type == MeshType::PROBE) {
 		output.probeIndex = modelTransform[instanceID].probeIndex;
+		if (ddgiProbes[output.probeIndex].state == DDGIProbe::State::inactive || ddgiProbes[output.probeIndex].state == DDGIProbe::State::border) {
+			output.draw = false;
+		}
 		output.probeOrigin =
 			ddgiProbes[output.probeIndex].position + ddgiProbes[output.probeIndex].offset;
 		float4x4 probeTransform = float4x4(
@@ -37,6 +41,9 @@ vertMain(VSInput input, uint instanceID: SV_VulkanInstanceID, uint drawIndex: SV
 
 [shader("fragment")]
 float4 fragMain(VSOutput input) : SV_TARGET {
+	if (!input.draw) {
+		discard;
+	}
 	if (input.meshType == MeshType::PROBE) {
 		float3 vector = input.worldPosition - input.probeOrigin;
 		return float4(
