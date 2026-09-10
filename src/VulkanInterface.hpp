@@ -161,7 +161,7 @@ class VulkanInterface {
 	static constexpr int DDGI_PROBE_SAMPLES {192};
 	static constexpr int DDGI_MODEL_INDEX {1};
 
-	static constexpr int DDGI_FRAMERATE {60};
+	static constexpr int DDGI_FRAMERATE {30};
 
 #ifdef NDEBUG
 	bool m_drawDdgiProbes {false};

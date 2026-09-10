@@ -80,6 +80,7 @@ add_executable(${PROJECT_NAME}
   src/VulkanInterfaceHelpers.cpp
   src/VulkanInterfaceDraw.cpp
   src/mikktspace.c
+  # src/tests.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} Vulkan::cppm glfw glm::glm fastgltf KTX::ktx VulkanMemoryAllocator)

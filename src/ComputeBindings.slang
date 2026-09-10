@@ -116,53 +116,51 @@ int3 globalToStableCoordinates(int3 position, int gridSpacing) {
 	return newVector;
 }
 
-uint float3ToR6G5B5(float3 input) {
+uint float3ToR8G8B8(float3 input) {
 	input = min(float3(1), input);
-	int x = int(input.x * (pow(2, 5) - 1));
-	x <<= 10;
+	uint x = uint(input.x * (pow(2, 7) - 1));
+	x <<= 16;
 	if (input.x < 0) {
-		x |= 0b00000000000000001000000000000000;
+		x |= 0b00000000100000000000000000000000;
 	}
-	int y = int(input.y * (pow(2, 4) - 1));
-	y <<= 5;
+	uint y = uint(input.y * (pow(2, 7) - 1));
+	y <<= 8;
 	if (input.y < 0) {
-		y |= 0b00000000000000000000001000000000;
+		y |= 0b00000000000000001000000000000000;
 	}
-	int z = int(input.z * (pow(2, 4) - 1));
+	uint z = uint(input.z * (pow(2, 7) - 1));
 	if (input.z < 0) {
-		z |= 0b00000000000000000000000000010000;
+		z |= 0b00000000000000000000000010000000;
 	}
 
 	return x | y | z;
-} // packs a float3 into r6g5b5 format using fixed point (assumes float3 is normalized, clamps if
+} // packs a float3 into r8g8b8 format using fixed point (assumes float3 is normalized, clamps if
   // otherwise)
 
-float3 R6G5B5ToFloat3(uint input) {
-	uint xMask = 0b00000000000000000111110000000000;
-	uint xSignMask = 0b00000000000000001000000000000000;
-	uint yMask = 0b00000000000000000000000111100000;
-	uint ySignMask = 0b00000000000000000000001000000000;
-	uint zMask = 0b00000000000000000000000000001111;
-	uint zSignMask = 0b00000000000000000000000000010000;
+float3 R8G8B8ToFloat3(uint input) {
+	uint xMask =     0b00000000011111110000000000000000;
+	uint xSignMask = 0b00000000100000000000000000000000;
+	uint yMask =     0b00000000000000000111111100000000;
+	uint ySignMask = 0b00000000000000001000000000000000;
+	uint zMask =     0b00000000000000000000000001111111;
+	uint zSignMask = 0b00000000000000000000000010000000;
 
-	int x = input & xMask;
-	x >>= 10;
-	int y = input & yMask;
-	y >>= 5;
-	int z = input & zMask;
+	uint x = (input & xMask) >> 16;
+	uint y = (input & yMask) >> 8;
+	uint z = input & zMask;
 
 	float3 output;
-	output.x = x / float(pow(2, 6) - 1);
+	output.x = x / float(pow(2, 7) - 1);
 	if ((input & xSignMask) == xSignMask) {
-		x *= -1;
+		output.x *= -1;
 	}
-	output.y = y / float(pow(2, 5) - 1);
+	output.y = y / float(pow(2, 7) - 1);
 	if ((input & ySignMask) == ySignMask) {
-		y *= -1;
+		output.y *= -1;
 	}
-	output.z = z / float(pow(2, 5) - 1);
+	output.z = z / float(pow(2, 7) - 1);
 	if ((input & zSignMask) == zSignMask) {
-		z *= -1;
+		output.z *= -1;
 	}
 	return output;
-} // unpacks a r6g5b5 uint into a float3, discarding the leftmost 16 bits
+} // unpacks a r8g8b8 uint into a float3, discarding the leftmost 16 bits

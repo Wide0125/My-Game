@@ -898,17 +898,13 @@ void VulkanInterface::updateDdgi(int cascadeIndex1, int cascadeIndex2) {
 			glm::floor(m_currentScene->getCameraPosition() - cameraPositionMod)
 		};
 		cascade2.innerBounds.upperBounds =
-			static_cast<glm::ivec3>(roundedCameraPosition) +
-			cascade2.innerDimensions / 2;
+			static_cast<glm::ivec3>(roundedCameraPosition) + cascade2.innerDimensions / 2;
 		cascade2.innerBounds.lowerBounds =
-			static_cast<glm::ivec3>(roundedCameraPosition) -
-			cascade2.innerDimensions / 2;
+			static_cast<glm::ivec3>(roundedCameraPosition) - cascade2.innerDimensions / 2;
 		cascade2.outerBounds.upperBounds =
-			static_cast<glm::ivec3>(roundedCameraPosition) +
-			cascade2.outerDimensions / 2;
+			static_cast<glm::ivec3>(roundedCameraPosition) + cascade2.outerDimensions / 2;
 		cascade2.outerBounds.lowerBounds =
-			static_cast<glm::ivec3>(roundedCameraPosition) -
-			cascade2.outerDimensions / 2;
+			static_cast<glm::ivec3>(roundedCameraPosition) - cascade2.outerDimensions / 2;
 
 		DDGICascadeGPU cascade2GPU {cascade2};
 		vmaCopyMemoryToAllocation(

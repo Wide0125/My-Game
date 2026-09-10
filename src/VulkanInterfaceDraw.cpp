@@ -9,8 +9,8 @@
 void VulkanInterface::drawFrame() {
 	bool cameraMoved {m_currentScene->handleCameraMovement()};
 	updateBuffers(cameraMoved);
-	bool ddgiOperations {false};
-	int secondaryDdgiOperationIndex {-1};
+	const bool ddgiOperations {nextFrame(DDGI_FRAMERATE, m_ddgiLastFrame)};
+	int secondaryDdgiOperationIndex {3};
 	if (ddgiOperations) {
 		if (m_ddgiFrameIndex % 2 == 0) {
 			secondaryDdgiOperationIndex = 1;
