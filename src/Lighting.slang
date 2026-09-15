@@ -211,11 +211,10 @@ uint probeCoordinatesToIndex(int3 position, int gridSpacing) {
 }
 
 float3 getProbeIrradiance(float3 worldPosition, float3 N) {
-	int3 lowerBounds = int3(floor(worldPosition));
 	int cascadeIndex = -1;
 	for (int cascadeIndexTemp = 0; cascadeIndexTemp < MAX_DDGI_CASCADES; ++cascadeIndexTemp) {
 		BoundsState pointBoundsState =
-			ddgiBoundsCheck(lowerBounds, ddgiCascades[cascadeIndexTemp].outerBounds);
+			ddgiBoundsCheck(worldPosition, ddgiCascades[cascadeIndexTemp].outerBounds);
 		if (pointBoundsState == BoundsState::inside || pointBoundsState == BoundsState::on) {
 			cascadeIndex = cascadeIndexTemp;
 			break;
@@ -226,7 +225,18 @@ float3 getProbeIrradiance(float3 worldPosition, float3 N) {
 	}
 
 	int gridSpacing = ddgiCascades[cascadeIndex].gridSpacing;
-	float3 distances = (worldPosition - lowerBounds);
+	float3 mods = worldPosition % gridSpacing;
+	if (mods.x < 0) {
+		mods.x += gridSpacing;
+	}
+	if (mods.y < 0) {
+		mods.y += gridSpacing;
+	}
+	if (mods.z < 0) {
+		mods.z += gridSpacing;
+	}
+	int3 lowerBounds = int3(floor(worldPosition - mods));
+	float3 distances = mods / gridSpacing;
 	float3 irradiance = float3(0);
 	float accumulatedWeights = 0.f;
 
@@ -247,7 +257,8 @@ float3 getProbeIrradiance(float3 worldPosition, float3 N) {
 					currCascadeIndex -= 1;
 				}
 
-				float3 dir = ddgiProbes[probeIndex].position + ddgiProbes[probeIndex].offset - worldPosition;
+				float3 dir =
+					ddgiProbes[probeIndex].position + ddgiProbes[probeIndex].offset - worldPosition;
 				float r = length(dir);
 				dir *= 1.0 / r;
 

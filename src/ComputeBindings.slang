@@ -63,7 +63,7 @@ RWStructuredBuffer<DDGIClearIndex> ddgiClearIndices;
 RWStructuredBuffer<DispatchIndirectCommand> ddgiClearCommand;
 
 enum BoundsState { inside, on, outside }
-BoundsState ddgiBoundsCheck(int3 position, Bounds bounds) {
+BoundsState ddgiBoundsCheck(float3 position, Bounds bounds) {
 	bool3 less = position < bounds.upperBounds;
 	bool3 greater = position > bounds.lowerBounds;
 	if (all(less) && all(greater)) {
@@ -118,17 +118,17 @@ int3 globalToStableCoordinates(int3 position, int gridSpacing) {
 
 uint float3ToR8G8B8(float3 input) {
 	input = min(float3(1), input);
-	uint x = uint(input.x * (pow(2, 7) - 1));
+	uint x = uint(abs(input.x) * (pow(2, 7) - 1));
 	x <<= 16;
 	if (input.x < 0) {
 		x |= 0b00000000100000000000000000000000;
 	}
-	uint y = uint(input.y * (pow(2, 7) - 1));
+	uint y = uint(abs(input.y) * (pow(2, 7) - 1));
 	y <<= 8;
 	if (input.y < 0) {
 		y |= 0b00000000000000001000000000000000;
 	}
-	uint z = uint(input.z * (pow(2, 7) - 1));
+	uint z = uint(abs(input.z) * (pow(2, 7) - 1));
 	if (input.z < 0) {
 		z |= 0b00000000000000000000000010000000;
 	}

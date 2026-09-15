@@ -1049,11 +1049,7 @@ void VulkanInterface::updateTlas() {
 }
 std::vector<glm::vec3> VulkanInterface::distributePointsOnUnitSphere(int samples) const {
 	PRNG rng {};
-	float rotationAngleX {static_cast<float>(rng.getRandomFloat() * 2 * std::numbers::pi)};
-	float rotationAngleY {static_cast<float>(rng.getRandomFloat() * 2 * std::numbers::pi)};
-	float rotationAngleZ {static_cast<float>(rng.getRandomFloat() * 2 * std::numbers::pi)};
-
-	glm::mat3x3 rotationMatrix {glm::eulerAngleXYZ(rotationAngleX, rotationAngleY, rotationAngleZ)};
+	float rotationAngle {static_cast<float>(rng.getRandomFloat() * 2 * std::numbers::pi)};
 
 	std::vector<glm::vec3> points {};
 	float phi {static_cast<float>((3 - std::sqrt(5)) * std::numbers::pi)};
@@ -1062,11 +1058,11 @@ std::vector<glm::vec3> VulkanInterface::distributePointsOnUnitSphere(int samples
 		float z {1 - 2 * (static_cast<float>(sample) / samples)};
 		float radius {static_cast<float>(sqrt(1 - z * z))};
 
-		float theta {phi * sample};
+		float theta {phi * sample + rotationAngle};
 
 		float x = std::cos(theta) * radius;
 		float y = std::sin(theta) * radius;
-		points.push_back(rotationMatrix * glm::vec3 {x, y, z});
+		points.emplace_back(x, y, z);
 	}
 	return points;
 }

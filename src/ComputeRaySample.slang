@@ -194,19 +194,15 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 		if (maxDistance < ddgiCascades[CASCADE_INDEX].gridSpacing) {
 			ddgiProbes[globalProbeIndex].state = DDGIProbe::State::inactive;
 		} else if (minDistance < MINIMUM_RAY_DISTANCE) {
-			ddgiProbes[globalProbeIndex].offset = -R8G8B8ToFloat3(probeMinimumDistance);
-			printf(
-				"%f, %f, %f",
-				-R8G8B8ToFloat3(probeMinimumDistance).x,
-				-R8G8B8ToFloat3(probeMinimumDistance).y,
-				-R8G8B8ToFloat3(probeMinimumDistance).z
-			);
+			ddgiProbes[globalProbeIndex].offset =
+				-(R8G8B8ToFloat3(probeMinimumDistance) * (MINIMUM_RAY_DISTANCE - minDistance) * 3);
 			clearProbe = true;
 		}
 		if (clearProbe) {
 			int originalValue;
 			InterlockedAdd(ddgiClearCommand[0].x, 1, originalValue);
 			ddgiClearIndices[originalValue] = DDGIClearIndex(probeIndex.x, CASCADE_INDEX);
+			printf("Probe clear requested!\n");
 		}
 	}
 }
