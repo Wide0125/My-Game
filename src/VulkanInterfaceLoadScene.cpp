@@ -426,25 +426,10 @@ void VulkanInterface::createDdgiResources() {
 			m_ddgiCascadeBuffers[frameIndex],
 			m_ddgiCascadeAllocations[frameIndex]
 		);
-		createBuffer(
-			sizeof(vk::DispatchIndirectCommand),
-			vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eIndirectBuffer,
-			VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-				VMA_ALLOCATION_CREATE_MAPPED_BIT,
-			m_ddgiClearDispatchCommandBuffers[frameIndex],
-			m_ddgiClearDispatchCommandAllocations[frameIndex]
-		);
 	}
-	createBuffer(
-		sizeof(DDGIClearIndex) * m_ddgiTotalProbeCount,
-		vk::BufferUsageFlagBits::eStorageBuffer,
-		{},
-		m_ddgiClearIndicesBuffer,
-		m_ddgiClearIndicesAllocation
-	);
 	std::vector<DDGIProbe> ddgiProbes {
 		static_cast<size_t>(m_ddgiTotalProbeCount),
-		DDGIProbe {{0, 0, 0}, DDGIProbe::State::inactive, {0, 0, 0}}
+		DDGIProbe {{0, 0, 0}, DDGIProbe::State::inactive, {0, 0, 0}, false}
 	};
 	createGPUBufferWithData(
 		sizeof(ddgiProbes[0]) * ddgiProbes.size(),
@@ -1210,17 +1195,7 @@ void VulkanInterface::createComputeDescriptorSets() {
 		vk::DescriptorBufferInfo ddgiBaseDimensionsBufferInfo {
 			.buffer = m_ddgiBaseDimensionsBuffer, .offset = 0, .range = sizeof(glm::ivec3)
 		};
-		vk::DescriptorBufferInfo ddgiClearIndicesBufferInfo {
-			.buffer = m_ddgiClearIndicesBuffer,
-			.offset = 0,
-			.range = sizeof(DDGIClearIndex) * m_ddgiTotalProbeCount
-		};
-		vk::DescriptorBufferInfo ddgiClearCommandBufferInfo {
-			.buffer = m_ddgiClearDispatchCommandBuffers[frameIndex],
-			.offset = 0,
-			.range = sizeof(vk::DispatchIndirectCommand)
-		};
-		std::array<vk::WriteDescriptorSet, 12> descriptorWrites {
+		std::array<vk::WriteDescriptorSet, 10> descriptorWrites {
 			{{.dstSet = m_descriptorSets[frameIndex],
 			  .dstBinding = 10,
 			  .dstArrayElement = 0,
@@ -1279,17 +1254,7 @@ void VulkanInterface::createComputeDescriptorSets() {
 			  .dstBinding = 19,
 			  .descriptorCount = 1,
 			  .descriptorType = vk::DescriptorType::eUniformBuffer,
-			  .pBufferInfo = &ddgiBaseDimensionsBufferInfo},
-			 {.dstSet = m_descriptorSets[frameIndex],
-			  .dstBinding = 20,
-			  .descriptorCount = 1,
-			  .descriptorType = vk::DescriptorType::eStorageBuffer,
-			  .pBufferInfo = &ddgiClearIndicesBufferInfo},
-			 {.dstSet = m_descriptorSets[frameIndex],
-			  .dstBinding = 21,
-			  .descriptorCount = 1,
-			  .descriptorType = vk::DescriptorType::eStorageBuffer,
-			  .pBufferInfo = &ddgiClearCommandBufferInfo}}
+			  .pBufferInfo = &ddgiBaseDimensionsBufferInfo}}
 		};
 		m_device.updateDescriptorSets(descriptorWrites, {});
 	}
@@ -1471,50 +1436,24 @@ void VulkanInterface::createComputePipelines() {
 	};
 	m_computeProbeDepthUpdatePipeline =
 		vk::raii::Pipeline {m_device, nullptr, computeProbeDepthUpdatePipelineInfo};
-
-	vk::raii::ShaderModule computeProbeIrradianceClearShaderModule {
-		createShaderModule(readFile(SHADER_PATH "/ComputeProbeIrradianceClear.spv"))
+	vk::raii::ShaderModule computeProbeResetShaderModule {
+		createShaderModule(readFile(SHADER_PATH "/ComputeProbeReset.spv"))
 	};
-	vk::PipelineShaderStageCreateInfo computeProbeIrradianceClearShaderStageInfo {
+	vk::PipelineShaderStageCreateInfo computeProbeResetShaderStageInfo {
 		.stage = vk::ShaderStageFlagBits::eCompute,
-		.module = computeProbeIrradianceClearShaderModule,
+		.module = computeProbeResetShaderModule,
 		.pName = "computeMain"
 	};
-	vk::PipelineLayoutCreateInfo computeProbeIrradianceClearPipelineLayoutInfo {
+	vk::PipelineLayoutCreateInfo computeProbeResetPipelineLayoutInfo {
 		.setLayoutCount = 1,
 		.pSetLayouts = &*m_descriptorSetLayout,
 		.pushConstantRangeCount = 1,
 		.pPushConstantRanges = &computePushConstants
 	};
-	m_computeProbeIrradianceClearPipelineLayout = {
-		m_device, computeProbeIrradianceClearPipelineLayoutInfo
+	m_computeProbeResetPipelineLayout = {m_device, computeProbeResetPipelineLayoutInfo};
+	vk::ComputePipelineCreateInfo computeProbeResetPipelineInfo {
+		.stage = computeProbeResetShaderStageInfo, .layout = m_computeProbeResetPipelineLayout
 	};
-	vk::ComputePipelineCreateInfo computeProbeIrradianceClearPipelineInfo {
-		.stage = computeProbeIrradianceClearShaderStageInfo,
-		.layout = m_computeProbeIrradianceClearPipelineLayout
-	};
-	m_computeProbeIrradianceClearPipeline =
-		vk::raii::Pipeline {m_device, nullptr, computeProbeIrradianceClearPipelineInfo};
-
-	vk::raii::ShaderModule computeProbeDepthClearShaderModule {
-		createShaderModule(readFile(SHADER_PATH "/ComputeProbeDepthClear.spv"))
-	};
-	vk::PipelineShaderStageCreateInfo computeProbeDepthClearShaderStageInfo {
-		.stage = vk::ShaderStageFlagBits::eCompute,
-		.module = computeProbeDepthClearShaderModule,
-		.pName = "computeMain"
-	};
-	vk::PipelineLayoutCreateInfo computeProbeDepthClearPipelineLayoutInfo {
-		.setLayoutCount = 1,
-		.pSetLayouts = &*m_descriptorSetLayout,
-		.pushConstantRangeCount = 1,
-		.pPushConstantRanges = &computePushConstants
-	};
-	m_computeProbeDepthClearPipelineLayout = {m_device, computeProbeDepthClearPipelineLayoutInfo};
-	vk::ComputePipelineCreateInfo computeProbeDepthClearPipelineInfo {
-		.stage = computeProbeDepthClearShaderStageInfo,
-		.layout = m_computeProbeDepthClearPipelineLayout
-	};
-	m_computeProbeDepthClearPipeline =
-		vk::raii::Pipeline {m_device, nullptr, computeProbeDepthClearPipelineInfo};
+	m_computeProbeResetPipeline =
+		vk::raii::Pipeline {m_device, nullptr, computeProbeResetPipelineInfo};
 }

@@ -136,11 +136,7 @@ struct DDGIProbe {
 	enum State { active, inactive, border };
 	State state {inactive};
 	glm::vec3 offset {};
-};
-
-struct DDGIClearIndex {
-	uint32_t probeIndex {};
-	uint32_t cascadeIndex {};
+	bool relocated {false};
 };
 
 class VulkanInterface {
@@ -281,10 +277,8 @@ class VulkanInterface {
 	vk::raii::PipelineLayout m_computeProbeIrradianceUpdatePipelineLayout {nullptr};
 	vk::raii::Pipeline m_computeProbeDepthUpdatePipeline {nullptr};
 	vk::raii::PipelineLayout m_computeProbeDepthUpdatePipelineLayout {nullptr};
-	vk::raii::Pipeline m_computeProbeIrradianceClearPipeline {nullptr};
-	vk::raii::PipelineLayout m_computeProbeIrradianceClearPipelineLayout {nullptr};
-	vk::raii::Pipeline m_computeProbeDepthClearPipeline {nullptr};
-	vk::raii::PipelineLayout m_computeProbeDepthClearPipelineLayout {nullptr};
+	vk::raii::Pipeline m_computeProbeResetPipeline {nullptr};
+	vk::raii::PipelineLayout m_computeProbeResetPipelineLayout {nullptr};
 
 	std::vector<vk::Buffer> m_blasBuffers {};
 	std::vector<VmaAllocation> m_blasAllocations {};
@@ -348,11 +342,6 @@ class VulkanInterface {
 	vk::Image m_ddgiDepthSampleCountImage {};
 	VmaAllocation m_ddgiDepthSampleCountAllocation {};
 	vk::raii::ImageView m_ddgiDepthSampleCountImageView {nullptr};
-
-	vk::Buffer m_ddgiClearIndicesBuffer {};
-	VmaAllocation m_ddgiClearIndicesAllocation {};
-	std::array<vk::Buffer, MAX_FRAMES_IN_FLIGHT> m_ddgiClearDispatchCommandBuffers {};
-	std::array<VmaAllocation, MAX_FRAMES_IN_FLIGHT> m_ddgiClearDispatchCommandAllocations {};
 
 	vk::MemoryBarrier2 m_pipelineMemoryBarrier {};	// reusable memory barrier
 	vk::DependencyInfo m_pipelineDependencyInfo {}; // reusable dependency info

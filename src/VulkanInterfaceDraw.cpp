@@ -100,10 +100,11 @@ void VulkanInterface::drawFrame() {
 	};
 	if (ddgiOperations) {
 		m_pipelineMemoryBarrier = {
-			.srcStageMask = vk::PipelineStageFlagBits2::eFragmentShader,
-			.srcAccessMask = vk::AccessFlagBits2::eShaderRead,
+			.srcStageMask = vk::PipelineStageFlagBits2::eFragmentShader |
+							vk::PipelineStageFlagBits2::eComputeShader,
+			.srcAccessMask = vk::AccessFlagBits2::eShaderWrite,
 			.dstStageMask = vk::PipelineStageFlagBits2::eComputeShader,
-			.dstAccessMask = vk::AccessFlagBits2::eShaderWrite
+			.dstAccessMask = vk::AccessFlagBits2::eShaderRead
 		};
 		m_pipelineDependencyInfo = {
 			.memoryBarrierCount = 1, .pMemoryBarriers = &m_pipelineMemoryBarrier
@@ -144,26 +145,6 @@ void VulkanInterface::drawFrame() {
 			.srcAccessMask = vk::AccessFlagBits2::eShaderWrite,
 			.dstStageMask = vk::PipelineStageFlagBits2::eComputeShader,
 			.dstAccessMask = vk::AccessFlagBits2::eShaderRead
-		};
-		m_pipelineDependencyInfo = {
-			.memoryBarrierCount = 1, .pMemoryBarriers = &m_pipelineMemoryBarrier
-		};
-		commandBuffer.pipelineBarrier2(m_pipelineDependencyInfo);
-
-		commandBuffer.bindPipeline(
-			vk::PipelineBindPoint::eCompute, m_computeProbeIrradianceClearPipeline
-		);
-		commandBuffer.dispatchIndirect(m_ddgiClearDispatchCommandBuffers[m_frameIndex], 0);
-		commandBuffer.bindPipeline(
-			vk::PipelineBindPoint::eCompute, m_computeProbeDepthClearPipeline
-		);
-		commandBuffer.dispatchIndirect(m_ddgiClearDispatchCommandBuffers[m_frameIndex], 0);
-		m_pipelineMemoryBarrier = {
-			.srcStageMask = vk::PipelineStageFlagBits2::eComputeShader |
-							vk::PipelineStageFlagBits2::eFragmentShader,
-			.srcAccessMask = vk::AccessFlagBits2::eShaderWrite,
-			.dstStageMask = vk::PipelineStageFlagBits2::eComputeShader,
-			.dstAccessMask = vk::AccessFlagBits2::eShaderRead | vk::AccessFlagBits2::eShaderWrite
 		};
 		m_pipelineDependencyInfo = {
 			.memoryBarrierCount = 1, .pMemoryBarriers = &m_pipelineMemoryBarrier
@@ -216,7 +197,7 @@ void VulkanInterface::drawFrame() {
 
 		m_pipelineMemoryBarrier = {
 			.srcStageMask = vk::PipelineStageFlagBits2::eComputeShader,
-			.srcAccessMask = vk::AccessFlagBits2::eShaderRead | vk::AccessFlagBits2::eShaderWrite,
+			.srcAccessMask = vk::AccessFlagBits2::eShaderWrite,
 			.dstStageMask = vk::PipelineStageFlagBits2::eVertexShader |
 							vk::PipelineStageFlagBits2::eFragmentShader |
 							vk::PipelineStageFlagBits2::eComputeShader,
@@ -226,6 +207,9 @@ void VulkanInterface::drawFrame() {
 			.memoryBarrierCount = 1, .pMemoryBarriers = &m_pipelineMemoryBarrier
 		};
 		commandBuffer.pipelineBarrier2(m_pipelineDependencyInfo);
+
+		commandBuffer.bindPipeline(vk::PipelineBindPoint::eCompute, m_computeProbeResetPipeline);
+		commandBuffer.dispatch(m_ddgiCascades[0].probeCount, 1, 1);
 
 		m_ddgiFrameIndex = (m_ddgiFrameIndex + 1) % DDGI_FRAMERATE;
 	}

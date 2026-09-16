@@ -15,21 +15,11 @@ struct DDGICascade {
 
 struct DDGIProbe {
 	int3 position;
-	enum State { active, inactive, border };
+	enum State { active, inactive, border, relocated };
 	State state;
 	float3 offset;
+	bool relocated;
 };
-
-struct DDGIClearIndex {
-	uint probeIndex;
-	uint cascadeIndex;
-}
-
-struct DispatchIndirectCommand {
-	uint x;
-	uint y;
-	uint z;
-}
 
 [[vk::binding(10, 0)]]
 RWStructuredBuffer<DDGIProbe> ddgiProbes;
@@ -57,10 +47,6 @@ RWTexture2D<float3> ddgiIrradianceTexture;
 RWTexture2D<float2> ddgiDepthTexture;
 [[vk::binding(19, 0)]]
 ConstantBuffer<int3> DDGI_BASE_DIMENSIONS;
-[[vk::binding(20, 0)]]
-RWStructuredBuffer<DDGIClearIndex> ddgiClearIndices;
-[[vk::binding(21, 0)]]
-RWStructuredBuffer<DispatchIndirectCommand> ddgiClearCommand;
 
 enum BoundsState { inside, on, outside }
 BoundsState ddgiBoundsCheck(float3 position, Bounds bounds) {

@@ -104,7 +104,7 @@ function(compile_shaders TARGET)
   )
   add_custom_command(
     OUTPUT ${SHADER_OUTPUT}
-    COMMAND ${SLANGC_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/src/${SHADER_SOURCES} -target spirv -profile spirv_1_6 -g2 -emit-spirv-directly -fvk-use-entrypoint-name -fvk-use-c-layout ${ENTRY_POINTS} -o ${SHADER_OUTPUT}
+    COMMAND ${SLANGC_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/src/${SHADER_SOURCES} -target spirv -profile spirv_1_6 -emit-spirv-directly -fvk-use-entrypoint-name -fvk-use-c-layout ${ENTRY_POINTS} -o ${SHADER_OUTPUT}
     WORKING_DIRECTORY ${SHADERS_DIR}
     DEPENDS ${SHADERS_DIR} src/${SHADER_SOURCES}
     COMMENT "Compiling Slang Shaders"
@@ -115,11 +115,10 @@ endfunction()
 
 compile_shaders(graphics_shader OUTPUT Graphics.spv SOURCES Graphics.slang ENTRY_POINTS vertMain fragMain)
 compile_shaders(compute_ray_sample_shader OUTPUT ComputeRaySample.spv SOURCES ComputeRaySample.slang ENTRY_POINTS computeMain)
-compile_shaders(compute_probe_irradiance_update_shader OUTPUT ComputeProbeIrradianceUpdate.spv SOURCES ComputeProbeIrradianceUpdate.slang ENTRY_POINTS computeMain)
-compile_shaders(compute_probe_depth_update_shader OUTPUT ComputeProbeDepthUpdate.spv SOURCES ComputeProbeDepthUpdate.slang ENTRY_POINTS computeMain)
-compile_shaders(compute_probe_irradiance_clear_shader OUTPUT ComputeProbeIrradianceClear.spv SOURCES ComputeProbeIrradianceClear.slang ENTRY_POINTS computeMain)
-compile_shaders(compute_probe_depth_clear_shader OUTPUT ComputeProbeDepthClear.spv SOURCES ComputeProbeDepthClear.slang ENTRY_POINTS computeMain)
-add_dependencies(${PROJECT_NAME} graphics_shader compute_ray_sample_shader compute_probe_irradiance_update_shader compute_probe_depth_update_shader compute_probe_irradiance_clear_shader compute_probe_depth_clear_shader)
+compile_shaders(compute_irradiance_update_shader OUTPUT ComputeProbeIrradianceUpdate.spv SOURCES ComputeProbeIrradianceUpdate.slang ENTRY_POINTS computeMain)
+compile_shaders(compute_depth_update_shader OUTPUT ComputeProbeDepthUpdate.spv SOURCES ComputeProbeDepthUpdate.slang ENTRY_POINTS computeMain)
+compile_shaders(compute_probe_reset_shader OUTPUT ComputeProbeReset.spv SOURCES ComputeProbeReset.slang ENTRY_POINTS computeMain)
+add_dependencies(${PROJECT_NAME} graphics_shader compute_ray_sample_shader compute_irradiance_update_shader compute_depth_update_shader compute_probe_reset_shader)
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
   SHADER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/shaders"

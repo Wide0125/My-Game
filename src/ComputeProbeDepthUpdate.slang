@@ -5,11 +5,12 @@ import Constants;
 [numthreads(14, 14, 1)]
 void computeMain(uint3 probeIndex: SV_GroupID, uint3 localTexelUV: SV_GroupThreadID) {
 	static groupshared uint counter;
-	static groupshared int globalProbeIndexTemp;
+	static groupshared int globalProbeIndex;
 	static groupshared int2 texelID;
+	static groupshared float currHysteresis;
 	if (localTexelUV.x == 0 && localTexelUV.y == 0) {
 		counter = 0;
-		globalProbeIndexTemp = PROBES_PER_CASCADE * CASCADE_INDEX;
+		globalProbeIndex = PROBES_PER_CASCADE * CASCADE_INDEX;
 		texelID =
 			int2(
 				(CASCADE_INDEX % 2) * DDGI_TEXTURE_SIZE * 16,
@@ -17,9 +18,14 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 localTexelUV: SV_GroupThrea
 			) +
 			int2((probeIndex.x % DDGI_TEXTURE_SIZE) * 16, (probeIndex.x / DDGI_TEXTURE_SIZE) * 16) +
 			int2(1);
+		if (ddgiProbes[globalProbeIndex].relocated == true) {
+			currHysteresis = 0;
+		} else {
+			currHysteresis = HYSTERESIS;
+		}
 	}
 	GroupMemoryBarrierWithGroupSync();
-	if (ddgiProbes[globalProbeIndexTemp].state == DDGIProbe::State::inactive) {
+	if (ddgiProbes[globalProbeIndex].state == DDGIProbe::State::inactive) {
 		return;
 	}
 
@@ -65,8 +71,8 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 localTexelUV: SV_GroupThrea
 		float2 previousDistances = ddgiDepthTexture.Load(texelID + localTexelUV.xy);
 		ddgiDepthTexture.Store(
 			texelID + localTexelUV.xy,
-			{ previousDistances.x * HYSTERESIS + distance * (1 - HYSTERESIS),
-			  previousDistances.y * HYSTERESIS + distance2 * (1 - HYSTERESIS) }
+			{ lerp(previousDistances.x, distance, currHysteresis),
+			  lerp(previousDistances.y, distance2, currHysteresis) }
 		);
 	}
 

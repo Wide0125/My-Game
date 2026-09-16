@@ -302,14 +302,8 @@ void VulkanInterface::cleanup() {
 		vmaDestroyBuffer(
 			m_allocator, m_ddgiCascadeBuffers[frameIndex], m_ddgiCascadeAllocations[frameIndex]
 		);
-		vmaDestroyBuffer(
-			m_allocator,
-			m_ddgiClearDispatchCommandBuffers[frameIndex],
-			m_ddgiClearDispatchCommandAllocations[frameIndex]
-		);
 	}
 	vmaDestroyBuffer(m_allocator, m_ddgiProbeBuffer, m_ddgiProbeAllocation);
-	vmaDestroyBuffer(m_allocator, m_ddgiClearIndicesBuffer, m_ddgiClearIndicesAllocation);
 	vmaDestroyBuffer(m_allocator, m_ddgiBaseDimensionsBuffer, m_ddgiBaseDimensionsAllocation);
 	vmaDestroyImage(m_allocator, m_ddgiIrradianceImage, m_ddgiIrradianceAllocation);
 	vmaDestroyImage(m_allocator, m_ddgiDepthImage, m_ddgiDepthAllocation);
@@ -355,7 +349,7 @@ void VulkanInterface::copyBuffer(
 }
 
 vk::DescriptorPoolCreateInfo VulkanInterface::createDescriptorPool(uint32_t textureCount) const {
-	std::array<vk::DescriptorPoolSize, 22> poolSize {
+	std::array<vk::DescriptorPoolSize, 20> poolSize {
 		{{.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
@@ -379,9 +373,7 @@ vk::DescriptorPoolCreateInfo VulkanInterface::createDescriptorPool(uint32_t text
 		  .descriptorCount = MAX_FRAMES_IN_FLIGHT},
 		 {.type = vk::DescriptorType::eCombinedImageSampler,
 		  .descriptorCount = MAX_FRAMES_IN_FLIGHT},
-		 {.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
-		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT},
-		 {.type = vk::DescriptorType::eStorageBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT}}
+		 {.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = MAX_FRAMES_IN_FLIGHT}}
 	};
 	vk::DescriptorPoolCreateInfo poolInfo {
 		.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
@@ -393,7 +385,7 @@ vk::DescriptorPoolCreateInfo VulkanInterface::createDescriptorPool(uint32_t text
 }
 vk::raii::DescriptorSetLayout
 VulkanInterface::createDescriptorSetLayout(uint32_t textureCount) const {
-	std::array<vk::DescriptorSetLayoutBinding, 22> bindings {
+	std::array<vk::DescriptorSetLayoutBinding, 20> bindings {
 		{{0, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr},
 		 {.binding = 1,
 		  .descriptorType = vk::DescriptorType::eUniformBuffer,
@@ -490,16 +482,6 @@ VulkanInterface::createDescriptorSetLayout(uint32_t textureCount) const {
 		  .descriptorType = vk::DescriptorType::eUniformBuffer,
 		  .descriptorCount = 1,
 		  .stageFlags = vk::ShaderStageFlagBits::eCompute | vk::ShaderStageFlagBits::eFragment,
-		  .pImmutableSamplers = nullptr},
-		 {.binding = 20,
-		  .descriptorType = vk::DescriptorType::eStorageBuffer,
-		  .descriptorCount = 1,
-		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
-		  .pImmutableSamplers = nullptr},
-		 {.binding = 21,
-		  .descriptorType = vk::DescriptorType::eStorageBuffer,
-		  .descriptorCount = 1,
-		  .stageFlags = vk::ShaderStageFlagBits::eCompute,
 		  .pImmutableSamplers = nullptr}}
 	};
 	vk::DescriptorSetLayoutCreateInfo layoutInfo {
@@ -921,14 +903,6 @@ void VulkanInterface::updateDdgi(int cascadeIndex1, int cascadeIndex2) {
 		m_ddgiProbeSampleAllocations[m_frameIndex],
 		0,
 		sizeof(glm::vec3) * DDGI_PROBE_SAMPLES
-	);
-	vk::DispatchIndirectCommand clearDispatchCommand {0, 1, 1};
-	vmaCopyMemoryToAllocation(
-		m_allocator,
-		&clearDispatchCommand,
-		m_ddgiClearDispatchCommandAllocations[m_frameIndex],
-		0,
-		sizeof(clearDispatchCommand)
 	);
 }
 void VulkanInterface::updateTlas() {

@@ -11,14 +11,12 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 	static groupshared uint probeMaximumDistance;
 	static groupshared uint counter;
 	static groupshared bool probeDeactivated;
-	static groupshared bool clearProbe;
 	if (rayIndex.x == 0) {
 		globalProbeIndex = probeIndex.x + CASCADE_INDEX * PROBES_PER_CASCADE;
 		probeMinimumDistance = UINT32_MAX;
 		probeMaximumDistance = 0;
 		counter = 0;
 		probeDeactivated = false;
-		clearProbe = false;
 		int3 position = indexToGlobalCoordinates(
 			probeIndex.x,
 			ddgiCascades[CASCADE_INDEX].outerBounds,
@@ -27,7 +25,7 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 		if (any(ddgiProbes[globalProbeIndex].position != position)) {
 			ddgiProbes[globalProbeIndex].position = position;
 			ddgiProbes[globalProbeIndex].offset = float3(0);
-			clearProbe = true;
+			ddgiProbes[globalProbeIndex].relocated = true;
 		}
 		BoundsState probeState = ddgiBoundsCheck(
 			ddgiProbes[globalProbeIndex].position, ddgiCascades[CASCADE_INDEX].innerBounds
@@ -194,14 +192,9 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 		if (maxDistance < ddgiCascades[CASCADE_INDEX].gridSpacing) {
 			ddgiProbes[globalProbeIndex].state = DDGIProbe::State::inactive;
 		} else if (minDistance < MINIMUM_RAY_DISTANCE) {
-			ddgiProbes[globalProbeIndex].offset =
-				-(R8G8B8ToFloat3(probeMinimumDistance) * (MINIMUM_RAY_DISTANCE - minDistance) * 3);
-			clearProbe = true;
-		}
-		if (clearProbe) {
-			int originalValue;
-			InterlockedAdd(ddgiClearCommand[0].x, 1, originalValue);
-			ddgiClearIndices[originalValue] = DDGIClearIndex(probeIndex.x, CASCADE_INDEX);
+			ddgiProbes[globalProbeIndex].offset +=
+				-(R8G8B8ToFloat3(probeMinimumDistance) * (MINIMUM_RAY_DISTANCE - minDistance));
+			ddgiProbes[globalProbeIndex].relocated = true;
 		}
 	}
 }

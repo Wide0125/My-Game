@@ -5,11 +5,12 @@ import Constants;
 [numthreads(6, 6, 1)]
 void computeMain(uint3 probeIndex: SV_GroupID, uint3 localTexelUV: SV_GroupThreadID) {
 	static groupshared uint counter;
-	static groupshared uint globalProbeIndexTemp;
+	static groupshared uint globalProbeIndex;
 	static groupshared int2 texelID;
+	static groupshared float currHysteresis;
 	if (localTexelUV.x == 0 && localTexelUV.y == 0) {
 		counter = 0;
-		globalProbeIndexTemp = PROBES_PER_CASCADE * CASCADE_INDEX;
+		globalProbeIndex = PROBES_PER_CASCADE * CASCADE_INDEX;
 		texelID =
 			int2(
 				(CASCADE_INDEX % 2) * DDGI_TEXTURE_SIZE * 8,
@@ -17,9 +18,15 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 localTexelUV: SV_GroupThrea
 			) +
 			int2((probeIndex.x % DDGI_TEXTURE_SIZE) * 8, (probeIndex.x / DDGI_TEXTURE_SIZE) * 8) +
 			int2(1);
+		if (ddgiProbes[globalProbeIndex].relocated) {
+			currHysteresis = 0;
+			printf("Hysteresis set to 0!\n");
+		} else {
+			currHysteresis = HYSTERESIS;
+		}
 	}
 	GroupMemoryBarrierWithGroupSync();
-	if (ddgiProbes[globalProbeIndexTemp].state == DDGIProbe::State::inactive) {
+	if (ddgiProbes[globalProbeIndex].state == DDGIProbe::State::inactive) {
 		return;
 	}
 
@@ -55,7 +62,7 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 localTexelUV: SV_GroupThrea
 	irradiance *= PI / (2 * weightSum);
 	float3 oldIrradiance = ddgiIrradianceTexture.Load(texelID + localTexelUV.xy);
 	ddgiIrradianceTexture.Store(
-		texelID + localTexelUV.xy, oldIrradiance * HYSTERESIS + irradiance * (1 - HYSTERESIS)
+		texelID + localTexelUV.xy, lerp(irradiance, oldIrradiance, currHysteresis)
 	);
 
 	int previousValue;
