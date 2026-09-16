@@ -15,7 +15,8 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 localTexelUV: SV_GroupThrea
 				(CASCADE_INDEX % 2) * DDGI_TEXTURE_SIZE * 16,
 				(CASCADE_INDEX / 2) * DDGI_TEXTURE_SIZE * 16
 			) +
-			int2((probeIndex.x % DDGI_TEXTURE_SIZE) * 16, (probeIndex.x / DDGI_TEXTURE_SIZE) * 16);
+			int2((probeIndex.x % DDGI_TEXTURE_SIZE) * 16, (probeIndex.x / DDGI_TEXTURE_SIZE) * 16) +
+			int2(1);
 	}
 	GroupMemoryBarrierWithGroupSync();
 	if (ddgiProbes[globalProbeIndexTemp].state == DDGIProbe::State::inactive) {
@@ -49,9 +50,8 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 localTexelUV: SV_GroupThrea
 		float dot = dot(texelVector, ddgiProbeSamples[currIndex]);
 		if (dot >= 0.8) {
 			++status;
-			float currDistance = ddgiDistanceTransmissionTexture.Load(
-				offsetUV + int2(currIndex, probeIndex.x)
-			);
+			float currDistance =
+				ddgiDistanceTransmissionTexture.Load(offsetUV + int2(currIndex, probeIndex.x));
 			distance += currDistance * dot;
 			distance2 += currDistance * currDistance * dot;
 			accumulatedDots += dot;

@@ -19,4 +19,6 @@ void computeMain(uint3 workgroupIndex: SV_GroupID, uint3 localTexelUV: SV_GroupT
 	GroupMemoryBarrierWithGroupSync();
 
 	ddgiDepthTexture.Store(texelID + localTexelUV.xy, float2(0));
+
+	GroupMemoryBarrierWithGroupSync();
 }

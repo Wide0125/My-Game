@@ -202,7 +202,6 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 			int originalValue;
 			InterlockedAdd(ddgiClearCommand[0].x, 1, originalValue);
 			ddgiClearIndices[originalValue] = DDGIClearIndex(probeIndex.x, CASCADE_INDEX);
-			printf("Probe clear requested!\n");
 		}
 	}
 }

@@ -19,7 +19,7 @@ struct VSOutput {
 	MeshType meshType;
 	float3 probeOrigin;
 	uint probeIndex;
-	bool draw;
+	uint draw;
 };
 
 struct ModelTransformBuffer {

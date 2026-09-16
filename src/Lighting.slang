@@ -158,7 +158,8 @@ float3 irradianceTexelFetch(float3 vector, int cascadeIndex, int probeIndex) {
 		int2(
 			(cascadeIndex % 2) * DDGI_TEXTURE_SIZE * 8, (cascadeIndex / 2) * DDGI_TEXTURE_SIZE * 8
 		) +
-		int2((probeIndex.x % DDGI_TEXTURE_SIZE) * 8, (probeIndex.x / DDGI_TEXTURE_SIZE) * 8);
+		int2((probeIndex.x % DDGI_TEXTURE_SIZE) * 8, (probeIndex.x / DDGI_TEXTURE_SIZE) * 8) +
+		int2(1);
 
 	float3 octaVector = vector / (abs(vector.x) + abs(vector.y) + abs(vector.z));
 
@@ -186,7 +187,8 @@ float2 depthTexelFetch(float3 vector, int cascadeIndex, int probeIndex) {
 		int2(
 			(cascadeIndex % 2) * DDGI_TEXTURE_SIZE * 16, (cascadeIndex / 2) * DDGI_TEXTURE_SIZE * 16
 		) +
-		int2((probeIndex.x % DDGI_TEXTURE_SIZE) * 16, (probeIndex.x / DDGI_TEXTURE_SIZE) * 16);
+		int2((probeIndex.x % DDGI_TEXTURE_SIZE) * 16, (probeIndex.x / DDGI_TEXTURE_SIZE) * 16) +
+		int2(1);
 
 	float3 octaVector = vector / (abs(vector.x) + abs(vector.y) + abs(vector.z));
 

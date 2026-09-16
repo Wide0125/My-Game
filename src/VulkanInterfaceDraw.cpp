@@ -10,7 +10,7 @@ void VulkanInterface::drawFrame() {
 	bool cameraMoved {m_currentScene->handleCameraMovement()};
 	updateBuffers(cameraMoved);
 	const bool ddgiOperations {nextFrame(DDGI_FRAMERATE, m_ddgiLastFrame)};
-	int secondaryDdgiOperationIndex {3};
+	int secondaryDdgiOperationIndex {-1};
 	if (ddgiOperations) {
 		if (m_ddgiFrameIndex % 2 == 0) {
 			secondaryDdgiOperationIndex = 1;
@@ -99,6 +99,16 @@ void VulkanInterface::drawFrame() {
 		.pDepthAttachment = &depthAttachmentInfo
 	};
 	if (ddgiOperations) {
+		m_pipelineMemoryBarrier = {
+			.srcStageMask = vk::PipelineStageFlagBits2::eFragmentShader,
+			.srcAccessMask = vk::AccessFlagBits2::eShaderRead,
+			.dstStageMask = vk::PipelineStageFlagBits2::eComputeShader,
+			.dstAccessMask = vk::AccessFlagBits2::eShaderWrite
+		};
+		m_pipelineDependencyInfo = {
+			.memoryBarrierCount = 1, .pMemoryBarriers = &m_pipelineMemoryBarrier
+		};
+		commandBuffer.pipelineBarrier2(m_pipelineDependencyInfo);
 		commandBuffer.bindDescriptorSets(
 			vk::PipelineBindPoint::eCompute,
 			m_computeRaySamplePipelineLayout,
@@ -153,7 +163,7 @@ void VulkanInterface::drawFrame() {
 							vk::PipelineStageFlagBits2::eFragmentShader,
 			.srcAccessMask = vk::AccessFlagBits2::eShaderWrite,
 			.dstStageMask = vk::PipelineStageFlagBits2::eComputeShader,
-			.dstAccessMask = vk::AccessFlagBits2::eShaderRead
+			.dstAccessMask = vk::AccessFlagBits2::eShaderRead | vk::AccessFlagBits2::eShaderWrite
 		};
 		m_pipelineDependencyInfo = {
 			.memoryBarrierCount = 1, .pMemoryBarriers = &m_pipelineMemoryBarrier
@@ -206,8 +216,9 @@ void VulkanInterface::drawFrame() {
 
 		m_pipelineMemoryBarrier = {
 			.srcStageMask = vk::PipelineStageFlagBits2::eComputeShader,
-			.srcAccessMask = vk::AccessFlagBits2::eShaderWrite,
-			.dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader |
+			.srcAccessMask = vk::AccessFlagBits2::eShaderRead | vk::AccessFlagBits2::eShaderWrite,
+			.dstStageMask = vk::PipelineStageFlagBits2::eVertexShader |
+							vk::PipelineStageFlagBits2::eFragmentShader |
 							vk::PipelineStageFlagBits2::eComputeShader,
 			.dstAccessMask = vk::AccessFlagBits2::eShaderRead
 		};

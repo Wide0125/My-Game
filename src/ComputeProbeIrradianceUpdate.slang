@@ -15,7 +15,8 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 localTexelUV: SV_GroupThrea
 				(CASCADE_INDEX % 2) * DDGI_TEXTURE_SIZE * 8,
 				(CASCADE_INDEX / 2) * DDGI_TEXTURE_SIZE * 8
 			) +
-			int2((probeIndex.x % DDGI_TEXTURE_SIZE) * 8, (probeIndex.x / DDGI_TEXTURE_SIZE) * 8);
+			int2((probeIndex.x % DDGI_TEXTURE_SIZE) * 8, (probeIndex.x / DDGI_TEXTURE_SIZE) * 8) +
+			int2(1);
 	}
 	GroupMemoryBarrierWithGroupSync();
 	if (ddgiProbes[globalProbeIndexTemp].state == DDGIProbe::State::inactive) {

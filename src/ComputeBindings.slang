@@ -1,6 +1,6 @@
 public module ComputeBindings;
 
-[vk::push_constant]
+[[vk::push_constant]]
 uint CASCADE_INDEX;
 
 struct Bounds {
@@ -31,35 +31,35 @@ struct DispatchIndirectCommand {
 	uint z;
 }
 
-[vk::binding(10, 0)]
+[[vk::binding(10, 0)]]
 RWStructuredBuffer<DDGIProbe> ddgiProbes;
-[vk::image_format("r11f_g11f_b10f")]
-[vk::binding(11, 0)]
+[[vk::image_format("r11f_g11f_b10f")]]
+[[vk::binding(11, 0)]]
 Sampler2D ddgiIrradianceSampler;
-[vk::image_format("rg16f")]
-[vk::binding(12, 0)]
+[[vk::image_format("rg16f")]]
+[[vk::binding(12, 0)]]
 Sampler2D ddgiDepthSampler;
-[vk::binding(13, 0)]
+[[vk::binding(13, 0)]]
 StructuredBuffer<float3> ddgiProbeSamples;
-[vk::binding(14, 0)]
+[[vk::binding(14, 0)]]
 StructuredBuffer<DDGICascade> ddgiCascades;
-[vk::image_format("r11f_g11f_b10f")]
-[vk::binding(15, 0)]
+[[vk::image_format("r11f_g11f_b10f")]]
+[[vk::binding(15, 0)]]
 RWTexture2D<float3> ddgiRadianceTransmissionTexture;
-[vk::image_format("r16f")]
-[vk::binding(16, 0)]
+[[vk::image_format("r16f")]]
+[[vk::binding(16, 0)]]
 RWTexture2D<float> ddgiDistanceTransmissionTexture;
-[vk::image_format("r11f_g11f_b10f")]
-[vk::binding(17, 0)]
+[[vk::image_format("r11f_g11f_b10f")]]
+[[vk::binding(17, 0)]]
 RWTexture2D<float3> ddgiIrradianceTexture;
-[vk::image_format("rg16f")]
-[vk::binding(18, 0)]
+[[vk::image_format("rg16f")]]
+[[vk::binding(18, 0)]]
 RWTexture2D<float2> ddgiDepthTexture;
-[vk::binding(19, 0)]
+[[vk::binding(19, 0)]]
 ConstantBuffer<int3> DDGI_BASE_DIMENSIONS;
-[vk::binding(20, 0)]
+[[vk::binding(20, 0)]]
 RWStructuredBuffer<DDGIClearIndex> ddgiClearIndices;
-[vk::binding(21, 0)]
+[[vk::binding(21, 0)]]
 RWStructuredBuffer<DispatchIndirectCommand> ddgiClearCommand;
 
 enum BoundsState { inside, on, outside }
