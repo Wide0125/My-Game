@@ -26,6 +26,7 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 			ddgiProbes[globalProbeIndex].position = position;
 			ddgiProbes[globalProbeIndex].offset = float3(0);
 			ddgiProbes[globalProbeIndex].relocated = true;
+			printf("Probe relocated!\n");
 		}
 		BoundsState probeState = ddgiBoundsCheck(
 			ddgiProbes[globalProbeIndex].position, ddgiCascades[CASCADE_INDEX].innerBounds
@@ -193,7 +194,7 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 rayIndex: SV_GroupThreadID)
 			ddgiProbes[globalProbeIndex].state = DDGIProbe::State::inactive;
 		} else if (minDistance < MINIMUM_RAY_DISTANCE) {
 			ddgiProbes[globalProbeIndex].offset +=
-				-(R8G8B8ToFloat3(probeMinimumDistance) * (MINIMUM_RAY_DISTANCE - minDistance));
+				-(R8G8B8ToFloat3(probeMinimumDistance) * 2 * (MINIMUM_RAY_DISTANCE - minDistance));
 			ddgiProbes[globalProbeIndex].relocated = true;
 		}
 	}

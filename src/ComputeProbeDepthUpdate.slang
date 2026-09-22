@@ -10,7 +10,7 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 localTexelUV: SV_GroupThrea
 	static groupshared float currHysteresis;
 	if (localTexelUV.x == 0 && localTexelUV.y == 0) {
 		counter = 0;
-		globalProbeIndex = PROBES_PER_CASCADE * CASCADE_INDEX;
+		globalProbeIndex = PROBES_PER_CASCADE * CASCADE_INDEX + probeIndex.x;
 		texelID =
 			int2(
 				(CASCADE_INDEX % 2) * DDGI_TEXTURE_SIZE * 16,
@@ -18,7 +18,7 @@ void computeMain(uint3 probeIndex: SV_GroupID, uint3 localTexelUV: SV_GroupThrea
 			) +
 			int2((probeIndex.x % DDGI_TEXTURE_SIZE) * 16, (probeIndex.x / DDGI_TEXTURE_SIZE) * 16) +
 			int2(1);
-		if (ddgiProbes[globalProbeIndex].relocated == true) {
+		if (ddgiProbes[globalProbeIndex].relocated) {
 			currHysteresis = 0;
 		} else {
 			currHysteresis = HYSTERESIS;

@@ -364,7 +364,7 @@ float4 getPointRadiance(
 		}
 	}
 
-	Lo += baseColor.rgb * getProbeIrradiance(worldPosition, N);
+	// Lo += baseColor.rgb / PI * getProbeIrradiance(worldPosition, N);
 
 	float3 ambient = float3(0) * baseColor.rgb * ao;
 	float3 color = ambient + Lo;

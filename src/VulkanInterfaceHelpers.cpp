@@ -1032,7 +1032,7 @@ std::vector<glm::vec3> VulkanInterface::distributePointsOnUnitSphere(int samples
 		float z {1 - 2 * (static_cast<float>(sample) / samples)};
 		float radius {static_cast<float>(sqrt(1 - z * z))};
 
-		float theta {phi * sample + rotationAngle};
+		float theta {phi * sample};
 
 		float x = std::cos(theta) * radius;
 		float y = std::sin(theta) * radius;
