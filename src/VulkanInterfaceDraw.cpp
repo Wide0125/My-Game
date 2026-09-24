@@ -7,20 +7,6 @@
 #include "VulkanInterface.hpp"
 
 void VulkanInterface::drawFrame() {
-	bool cameraMoved {m_currentScene->handleCameraMovement()};
-	updateBuffers(cameraMoved);
-	const bool ddgiOperations {nextFrame(DDGI_FRAMERATE, m_ddgiLastFrame)};
-	int secondaryDdgiOperationIndex {-1};
-	if (ddgiOperations) {
-		if (m_ddgiFrameIndex % 2 == 0) {
-			secondaryDdgiOperationIndex = 1;
-		} else if (m_ddgiFrameIndex % 4 == 3) {
-			secondaryDdgiOperationIndex = 2;
-		} else if (m_ddgiFrameIndex % 8 == 1) {
-			secondaryDdgiOperationIndex = 3;
-		}
-		updateDdgi(0, secondaryDdgiOperationIndex);
-	}
 	auto fenceResult =
 		m_device.waitForFences(*m_inFlightFences[m_frameIndex], vk::True, UINT64_MAX);
 	if (fenceResult != vk::Result::eSuccess) {
@@ -37,7 +23,23 @@ void VulkanInterface::drawFrame() {
 		assert(result == vk::Result::eTimeout || result == vk::Result::eNotReady);
 		throw std::runtime_error("failed to acquire swap chain image!");
 	}
+	
+	bool cameraMoved {m_currentScene->handleCameraMovement()};
+	updateBuffers(cameraMoved);
 	updateTlas();
+
+	const bool ddgiOperations {nextFrame(DDGI_FRAMERATE, m_ddgiLastFrame)};
+	int secondaryDdgiOperationIndex {-1};
+	if (ddgiOperations) {
+		if (m_ddgiFrameIndex % 2 == 0) {
+			secondaryDdgiOperationIndex = 1;
+		} else if (m_ddgiFrameIndex % 4 == 3) {
+			secondaryDdgiOperationIndex = 2;
+		} else if (m_ddgiFrameIndex % 8 == 1) {
+			secondaryDdgiOperationIndex = 3;
+		}
+		updateDdgi(0, secondaryDdgiOperationIndex);
+	}
 
 	m_device.resetFences(*m_inFlightFences[m_frameIndex]); // check fences
 
